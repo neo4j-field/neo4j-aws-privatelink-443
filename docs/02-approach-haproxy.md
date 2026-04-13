@@ -99,7 +99,7 @@ Expected: 3 servers, all `Enabled` and `Available`.
 
 ## Part 2 — HAProxy Installation and Configuration
 
-HAProxy is installed on **Nodes A and B** only. Node C has no HAProxy because it is exposed via its own dedicated Bolt PrivateLink endpoint (port 7687 direct).
+HAProxy is installed on **all 3 nodes**. Each node runs both Neo4j and HAProxy, with HAProxy listening on port 443 and routing traffic to the local Neo4j instance via SNI.
 
 ### 2.1 Install HAProxy
 
@@ -375,19 +375,19 @@ sudo tail -20 /var/log/neo4j/neo4j.log | grep -E "Connected|RAFT|Started"
 ### 8.2 From the Consumer VPC
 
 ```bash
-# Test connectivity to HTTPS endpoint
+# Test HTTPS endpoint
 nc -zv privatelink.neo4jfield.org 443
 
-# Test per-node Bolt endpoints
-nc -zv east-a.neo4jfield.org 7687
-nc -zv east-b.neo4jfield.org 7687
-nc -zv east-c.neo4jfield.org 7687
+# Test per-node Bolt endpoints — all exposed on port 443 via PrivateLink
+nc -zv east-a.neo4jfield.org 443
+nc -zv east-b.neo4jfield.org 443
+nc -zv east-c.neo4jfield.org 443
 ```
 
 ```powershell
 # PowerShell
 Test-NetConnection -ComputerName privatelink.neo4jfield.org -Port 443
-Test-NetConnection -ComputerName east-a.neo4jfield.org -Port 7687
+Test-NetConnection -ComputerName east-a.neo4jfield.org -Port 443
 ```
 
 ### 8.3 Neo4j Browser
@@ -398,7 +398,7 @@ https://privatelink.neo4jfield.org/browser/
 ```
 
 Connect with:
-- **Connect URL:** `neo4j+s://east-a.neo4jfield.org:7687`
+- **Connect URL:** `neo4j+s://east-a.neo4jfield.org:443`
 - **Username:** `neo4j`
 - **Password:** `<your password>`
 

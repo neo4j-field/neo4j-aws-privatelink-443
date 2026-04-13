@@ -35,7 +35,7 @@ Consumer VPC (client)
 Provider VPC (us-east-1)
   ├── Neo4j Node A (us-east-1a) — HAProxy + Neo4j
   ├── Neo4j Node B (us-east-1b) — HAProxy + Neo4j
-  └── Neo4j Node C (us-east-1c) — Neo4j only
+  └── Neo4j Node C (us-east-1c) — HAProxy + Neo4j
 ```
 
 ---

@@ -10,10 +10,9 @@ This setup exposes a 3-node Neo4j Enterprise cluster (one node per Availability 
 |---|---|---|---|
 | `east-a.neo4jfield.org` | us-east-1a | Neo4j Primary + HAProxy | 10.0.5.82 |
 | `east-b.neo4jfield.org` | us-east-1b | Neo4j Primary + HAProxy | 10.0.26.126 |
-| `east-c.neo4jfield.org` | us-east-1c | Neo4j Primary | 10.0.47.163 |
+| `east-c.neo4jfield.org` | us-east-1c | Neo4j Primary + HAProxy | 10.0.47.163 |
 
-- **HAProxy** is co-located on Nodes A and B. It terminates TLS on port 443 and routes traffic based on SNI hostname to Neo4j HTTPS (`:7473`) or Bolt (`:7687`).
-- **Node C** runs Neo4j only — it is reachable via its own dedicated Bolt PrivateLink endpoint.
+- **HAProxy** is co-located on all 3 nodes. It terminates TLS on port 443 and routes traffic based on SNI hostname to Neo4j HTTPS (`:7473`) or Bolt (`:7687`).
 
 ![EC2 instances for the 3-node Neo4j cluster in us-east-1 (Provider VPC)](../screenshots/East_Neo4j_Producer_Cluster.png)
 
