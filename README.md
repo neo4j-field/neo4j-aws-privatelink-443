@@ -15,9 +15,7 @@ Two approaches are documented:
 
 ## Architecture Diagram
 
-The full architecture diagram is available as a PDF:
-
-**[neo4j_aws_privatelink_architecture.pdf](screenshots/neo4j_aws_privatelink_architecture.pdf)**
+![Neo4j AWS PrivateLink Architecture — Provider VPC (us-east-1) with 3-node cluster exposed via PrivateLink to Consumer VPC (ca-central-1)](screenshots/neo4j_aws_privatelink_architecture.png)
 
 ---
 
