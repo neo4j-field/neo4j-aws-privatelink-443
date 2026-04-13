@@ -1,4 +1,4 @@
-# Neo4j PrivateLink Demo — Python Script
+# Neo4j PrivateLink Demo — Python Script - using 443 from Consumer VPC
 
 Demonstrates connecting to a 3-node Neo4j Enterprise cluster from a Consumer VPC
 via AWS PrivateLink, with all traffic over port 443.
