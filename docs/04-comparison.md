@@ -66,7 +66,7 @@
 - Consumers need Neo4j Browser access from a standard web browser
 - You use standard Bolt drivers in application code (not NES)
 - You want a production-ready, GA setup with no EAP dependencies
-- You need to expose additional services (custom apps, graph360) on port 443 alongside Neo4j
+- You need to expose additional custom services on port 443 alongside Neo4j
 
 **Choose Approach 2 (NES) if:**
 - Consumers are willing to install NES in their environment
