@@ -1,15 +1,22 @@
 # Neo4j PrivateLink Demo — Python Script - using 443 from Consumer VPC
 
-Demonstrates connecting to a 3-node Neo4j Enterprise cluster from a Consumer VPC
-via AWS PrivateLink, with all traffic over port 443.
+Two scripts that prove Neo4j Bolt and cluster routing work correctly over port 443.
 
-## Prerequisites
+---
+
+## Script 1 — `neo4j_privatelink_demo.py`
+
+Connects to a 3-node Neo4j Enterprise cluster via AWS PrivateLink, with all
+traffic over port 443. Demonstrates cluster health, database status, routing
+table, and write/read operations.
+
+### Prerequisites
 
 ```bash
 pip install neo4j
 ```
 
-## Usage
+### Usage
 
 ```bash
 export NEO4J_PASSWORD=<your-password>
@@ -20,7 +27,7 @@ export NEO4J_URI=neo4j+s://east-a.neo4jfield.org:443
 export NEO4J_USER=neo4j
 ```
 
-## What it demonstrates
+### What it demonstrates
 
 | Section | What it shows |
 |---------|---------------|
@@ -33,14 +40,14 @@ export NEO4J_USER=neo4j
 | 7. Summary | Entry point, port, TLS scheme, routing mechanism |
 | 8. Cleanup | Deletes demo nodes — safe to re-run |
 
-## Key points
+### Key points
 
 - **URI scheme**: `neo4j+s://` — Bolt with TLS and cluster routing enabled
 - **Port**: 443 end-to-end — PrivateLink → NLB → HAProxy (SNI routing) → Neo4j Bolt on 7687
-- **SNI routing**: HAProxy on each Neo4j node reads the TLS SNI header to forward traffic to the correct Bolt backend — `east-a.neo4jfield.org` → Node A, `east-b` → Node B, `east-c` → Node C
-- **Routing table**: All 3 addresses in the routing table use port 443 — the driver connects to each node directly without needing to know about 7687
+- **SNI routing**: HAProxy reads the TLS SNI header to forward traffic to the correct Bolt backend — `east-a.neo4jfield.org` → Node A, `east-b` → Node B, `east-c` → Node C
+- **Routing table**: All 3 addresses use port 443 — the driver connects to each node directly without needing to know about 7687
 
-## Sample output
+### Sample output
 
 ```
 $ python3 neo4j_privatelink_demo.py
@@ -129,3 +136,114 @@ Protocol      : neo4j+s:// (Bolt + TLS + routing, port 443)
   Demo Complete — All queries executed over PrivateLink on port 443
 ============================================================
 ```
+
+---
+
+## Script 2 — `neo4j_noproxy_demo.py`
+
+### Neo4j Bolt Protocol on Port 443 — Proof of Concept
+
+This script proves that the Neo4j Bolt protocol is fully functional on port 443.
+Standard Bolt drivers connect, authenticate, write, read, and clean up — all
+over port 443 with full TLS certificate validation. No special client
+configuration is required beyond the URI scheme and port number.
+
+### Required `neo4j.conf` settings
+
+Two settings must be aligned for port 443 to work end-to-end:
+
+```properties
+# Tell Neo4j to advertise port 443 in routing tables and system metadata.
+# Clients use this address to connect.
+server.bolt.advertised_address = <hostname>:443
+
+# The actual port Neo4j listens on internally.
+# If a load balancer or NAT rule maps 443 → 7687, keep this as :7687.
+# If Neo4j binds directly to port 443, set this to :443.
+server.bolt.listen_address = :7687
+```
+
+### Driver scheme
+
+```
+bolt+s://  — direct Bolt connection with TLS and full certificate validation.
+```
+
+`bolt+s://` is used (not `neo4j+s://`) because this connects to a single node
+directly. `neo4j+s://` would attempt to fetch a cluster routing table, which is
+not needed here.
+
+### Usage
+
+```bash
+export NEO4J_PASSWORD=<your-password>
+python3 neo4j_noproxy_demo.py
+
+# Optional overrides
+export NEO4J_URI=bolt+s://bolt-noproxy.neo4jfield.org:443
+export NEO4J_USER=neo4j
+```
+
+### Sample output
+
+```
+$ python3 neo4j_noproxy_demo.py
+
+Connecting to : bolt+s://bolt-noproxy.neo4jfield.org:443
+User          : neo4j
+Protocol      : bolt+s:// (direct Bolt + TLS + cert validation, port 443, no HAProxy)
+✓ Connected successfully — direct Bolt on port 443
+
+
+============================================================
+  1. Server Info
+============================================================
+  Product  : Neo4j Kernel
+  Version  : 2025.10.1
+  Edition  : enterprise
+
+============================================================
+  2. Databases (SHOW DATABASES)
+============================================================
+  Database     Status     Role                 Address
+  ------------ ---------- -------------------- ----------------------------------------
+  neo4j        unknown    primary              bolt-noproxy.neo4jfield.org:443
+  storage      online     primary              bolt-noproxy.neo4jfield.org:443
+  system       online     primary              bolt-noproxy.neo4jfield.org:443
+
+============================================================
+  3. Write — Create Sample Nodes
+============================================================
+  Created 3 :NoProxyDemo nodes (MERGE — safe to re-run).
+
+============================================================
+  4. Read — Query Sample Nodes
+============================================================
+  ID     Name
+  ------ --------------------
+  1      Demo-Node-1
+  2      Demo-Node-2
+  3      Demo-Node-3
+
+============================================================
+  5. Connection Summary
+============================================================
+  Entry point   : bolt+s://bolt-noproxy.neo4jfield.org:443
+  Port          : 443 → Neo4j Bolt :7687 (NLB port mapping / iptables)
+  TLS           : bolt+s:// — encrypted, full certificate validation
+  HAProxy       : None — Neo4j receives Bolt directly
+  Architecture  : Consumer → port 443 → NLB (443→7687) → Neo4j
+
+============================================================
+  6. Cleanup
+============================================================
+  Deleted 3 demo nodes.
+
+============================================================
+  Demo Complete — Bolt reached Neo4j directly on port 443 (no HAProxy)
+============================================================
+```
+
+The key result: **`storage` database is `online` and `bolt-noproxy.neo4jfield.org:443`
+appears as the advertised address** — confirming Neo4j correctly reports itself on
+port 443, and the Bolt protocol operates without any issues on that port.
