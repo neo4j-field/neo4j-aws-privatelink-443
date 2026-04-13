@@ -15,9 +15,13 @@ This setup exposes a 3-node Neo4j Enterprise cluster (one node per Availability 
 - **HAProxy** is co-located on Nodes A and B. It terminates TLS on port 443 and routes traffic based on SNI hostname to Neo4j HTTPS (`:7473`) or Bolt (`:7687`).
 - **Node C** runs Neo4j only — it is reachable via its own dedicated Bolt PrivateLink endpoint.
 
+![EC2 instances for the 3-node Neo4j cluster in us-east-1 (Provider VPC)](../screenshots/East_Neo4j_Producer_Cluster.png)
+
 ### Consumer VPC (Client Side)
 
 The consumer VPC is in the same or a different AWS account/region. Clients access Neo4j through **VPC Interface Endpoints** that point to the PrivateLink endpoint services in the Provider VPC.
+
+![EC2 instances in the Consumer VPC — NES server and Windows client in ca-central-1](../screenshots/Central_Neo4j_Consumer_Instances.png)
 
 ---
 

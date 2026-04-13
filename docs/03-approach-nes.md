@@ -170,6 +170,8 @@ NES will perform the initial Bolt handshake on port 443, retrieve the routing ta
 | **Dashboards** | Build BI-style charts and panels from Cypher queries |
 | **Multi-database** | Browse and query across all databases in the cluster |
 
+![Neo4j Enterprise Studio running in the Consumer VPC — Dashboards view with Employee graph analytics](../screenshots/NES_Available_In_Central_VPC.png)
+
 ### 6.3 Verify Connectivity
 
 From the NES host in the Consumer VPC:

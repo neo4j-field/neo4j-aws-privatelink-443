@@ -70,6 +70,10 @@ Copy the appropriate sample configuration and place it at `/etc/neo4j/neo4j.conf
 
 > **Design rationale — private IPs for cluster, DNS for bolt:** Cluster discovery and RAFT use private IPs because these are intra-VPC communications that never leave the Provider VPC. Bolt advertised addresses use DNS names because these are returned to consumers in the routing table, and consumers reach them via PrivateLink (which resolves DNS to ENI IPs in the Consumer VPC).
 
+The security group on each Neo4j node should allow the cluster ports within the VPC CIDR, and port 443 inbound from the NLB security group:
+
+![Security group inbound rules for Neo4j nodes — ports 443, 7687, 6000, 7688, 7000](../screenshots/Security_Group_East.png)
+
 ### 1.4 Start the Cluster
 
 Start Neo4j on all three nodes (order does not matter):
@@ -188,6 +192,10 @@ Create this NLB in the AWS Console or CLI:
 
 > **Why 2 subnets on the HTTPS NLB?** An NLB operates in each AZ independently. By specifying a subnet in both `us-east-1a` and `us-east-1b`, the NLB can route traffic to the HAProxy instance in the closest AZ. If one AZ's HAProxy becomes unhealthy, traffic automatically shifts to the other. This is the core of high availability — always configure at least 2 subnets on any NLB that fronts a redundant service.
 
+![NLB nlb-int-neo4j-443 — Internal NLB with TCP:443 listener across 3 AZs](../screenshots/Network_Load_Balancer.png)
+
+![NLB target group showing all 3 Neo4j nodes healthy on port 443](../screenshots/NLB_Target_Groups.png)
+
 ### 3.2 NLBs for Bolt (one per node)
 
 Create 3 separate NLBs, each targeting a single Neo4j node on the Bolt port:
@@ -226,6 +234,8 @@ AWS Console → VPC → PrivateLink and Lattice → Endpoint services → **Crea
 | `svc-neo4j-bolt-a` | `nlb-neo4j-bolt-a` | `east-a.neo4jfield.org` | Node A Bolt |
 | `svc-neo4j-bolt-b` | `nlb-neo4j-bolt-b` | `east-b.neo4jfield.org` | Node B Bolt |
 | `svc-neo4j-bolt-c` | `nlb-neo4j-bolt-c` | `east-c.neo4jfield.org` | Node C Bolt |
+
+![PrivateLink endpoint services — all 4 services Available with verified private DNS names](../screenshots/VPC_PrivateLink_Endpoint_Services.png)
 
 ### 4.3 Verify the Private DNS Name
 
@@ -302,6 +312,10 @@ AWS Console → VPC → Endpoints → **Create endpoint**
 
 > **Why 2 subnets on the Interface Endpoint?** An Interface Endpoint creates an ENI (Elastic Network Interface) in each specified subnet. If one AZ becomes unavailable, clients in other AZs continue to reach the endpoint via the ENI in a healthy AZ. With only 1 subnet, a single AZ failure takes down the entire PrivateLink connection. Always configure at least 2 subnets (in different AZs) for production endpoints.
 
+![Interface endpoint in the Consumer VPC — Available, with private DNS names enabled](../screenshots/Endpoint_Central_VPC.png)
+
+![Endpoint subnet settings — 2 subnets in ca-central-1a and ca-central-1b for HA](../screenshots/Endpoint_Subnets_Settings.png)
+
 ### 6.2 Consumer Endpoint Summary
 
 | Endpoint | Service | Private DNS | Enable DNS |
@@ -319,6 +333,8 @@ If **Acceptance required** is enabled on the endpoint services:
 2. Select the pending connection → **Actions → Accept endpoint connection**
 3. State changes from `pending acceptance` → `available`
 
+![Endpoint connections tab — accepted connection from the Central (consumer) VPC](../screenshots/Endpoint_Connection_Setup_from_Central.png)
+
 ---
 
 ## Part 7 — Consumer VPC: Route 53 PHZ (Optional)
@@ -333,6 +349,8 @@ If the consumer VPC is in a different account or the Interface Endpoint private 
 | `east-c.neo4jfield.org` | A (Alias) | Interface Endpoint DNS name for `ep-neo4j-bolt-c` |
 
 Associate this PHZ **only with the Consumer VPC**.
+
+![Route 53 PHZ in the Consumer VPC — DNS records pointing to ENI IPs for each node](../screenshots/Route_53_PHZ.png)
 
 ---
 
@@ -384,12 +402,16 @@ Connect with:
 - **Username:** `neo4j`
 - **Password:** `<your password>`
 
+![Neo4j Browser connected from the Consumer VPC via privatelink.neo4jfield.org — bolt+s://east-a.neo4jfield.org:443](../screenshots/Neo4j_Cluster_Available_In_Consumer_VPC.png)
+
 After login:
 
 ```cypher
 SHOW SERVERS
 ```
 Expected: 3 servers, all `Enabled` and `Available`.
+
+![SHOW SERVERS output — all 3 nodes Enabled and Available on :443](../screenshots/Neo4j_Cluster_Available_In_Consumer_VPC_2.png)
 
 ```cypher
 SHOW DATABASES

@@ -13,6 +13,14 @@ Two approaches are documented:
 
 ---
 
+## Architecture Diagram
+
+The full architecture diagram is available as a PDF:
+
+**[neo4j_aws_privatelink_architecture.pdf](screenshots/neo4j_aws_privatelink_architecture.pdf)**
+
+---
+
 ## Architecture at a Glance
 
 ```
