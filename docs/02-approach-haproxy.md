@@ -138,6 +138,7 @@ Copy the appropriate sample configuration to `/etc/haproxy/haproxy.cfg`:
 |---|---|
 | Node A | [`config/approach-1-haproxy/node-a/haproxy.cfg`](../config/approach-1-haproxy/node-a/haproxy.cfg) |
 | Node B | [`config/approach-1-haproxy/node-b/haproxy.cfg`](../config/approach-1-haproxy/node-b/haproxy.cfg) |
+| Node C | [`config/approach-1-haproxy/node-c/haproxy.cfg`](../config/approach-1-haproxy/node-c/haproxy.cfg) |
 
 **How the SNI routing works:**
 

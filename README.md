@@ -61,7 +61,8 @@ config/
 │   │   ├── neo4j.conf       # Node B (us-east-1b) — HAProxy approach
 │   │   └── haproxy.cfg      # HAProxy config for Node B
 │   └── node-c/
-│       └── neo4j.conf       # Node C (us-east-1c) — HAProxy approach
+│       ├── neo4j.conf       # Node C (us-east-1c) — HAProxy approach
+│       └── haproxy.cfg      # HAProxy config for Node C
 └── approach-2-nes/
     ├── node-a/
     │   └── neo4j.conf       # Node A — NES approach (bolt advertised on :443)
