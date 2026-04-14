@@ -72,18 +72,29 @@ config/
         └── neo4j.conf       # Node C — NES approach
 ```
 
-> **Note:** All sample hostnames use `neo4jfield.org` and RFC1918 private IPs (`10.0.x.x`) as illustrative examples. Substitute your own domain and IP ranges. No credentials, private keys, or certificates are included.
+> **Note:** Provider VPC node IPs (`10.0.x.x`) are illustrative examples — substitute your own IP ranges. Consumer VPC ENI IPs and hostnames reflect an actual deployment. No credentials, private keys, or certificates are included.
 
 ---
 
 ## Quick Reference: DNS Resolution by VPC
 
-| Hostname | Provider VPC (via Route 53 PHZ) | Consumer VPC (via Endpoint DNS) |
+Two separate **Private Hosted Zones (PHZs)** implement split-horizon DNS — each VPC resolves the same hostnames to different IPs.
+
+- **Provider VPC PHZ** (us-east-1) — associated with the Provider VPC only. Resolves hostnames to Neo4j node private IPs (`10.0.x.x`) for intra-cluster communication.
+- **Consumer VPC PHZ** (ca-central-1) — associated with the Consumer VPC. Resolves hostnames to PrivateLink Interface Endpoint ENI IPs (`192.168.x.x`).
+
+> **Important:** The Provider PHZ must **not** be associated with the Consumer VPC. If it were, Consumer VPC clients would resolve `east-*.neo4jfield.org` to the `10.0.x.x` node IPs directly — which are unreachable from the Consumer VPC — bypassing PrivateLink entirely.
+
+| Hostname | Provider VPC PHZ (us-east-1) | Consumer VPC PHZ (ca-central-1) |
 |---|---|---|
-| `privatelink.neo4jfield.org` | `10.0.5.82` (HAProxy on Node A) | ENI IP → PrivateLink → NLB → HAProxy |
-| `east-a.neo4jfield.org` | `10.0.5.82` (direct to Node A) | ENI IP → PrivateLink → Node A |
-| `east-b.neo4jfield.org` | `10.0.26.126` (direct to Node B) | ENI IP → PrivateLink → Node B |
-| `east-c.neo4jfield.org` | `10.0.47.163` (direct to Node C) | ENI IP → PrivateLink → Node C |
+| `privatelink.neo4jfield.org` | `10.0.5.82` (HAProxy on Node A) | — |
+| `east-a.neo4jfield.org` | `10.0.5.82` (Node A) | `192.168.2.74`, `192.168.3.26` |
+| `east-b.neo4jfield.org` | `10.0.26.126` (Node B) | `192.168.2.74`, `192.168.3.26` |
+| `east-c.neo4jfield.org` | `10.0.47.163` (Node C) | `192.168.2.74`, `192.168.3.26` |
+| `studio.neo4jfield.org` | — | `192.168.1.43` |
+| `bolt-noproxy.neo4jfield.org` | — | `3.82.20.139` |
+
+> In the Consumer VPC, all `east-*.neo4jfield.org` hostnames resolve to the **same PrivateLink endpoint ENI IPs**. Per-node routing (to Node A, B, or C) is handled by **HAProxy via SNI inspection** on port 443 (Approach 1 only).
 
 ---
 
