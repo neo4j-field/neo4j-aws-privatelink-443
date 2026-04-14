@@ -1,4 +1,4 @@
-# Secure Neo4j Access Over Port 443 — PrivateLink, HAProxy, and NLB
+# Secure Neo4j Access Over Port 443: PrivateLink, HAProxy, and NLB
 
 This repository provides a production-tested, step-by-step guide for exposing a **3-node Neo4j 5.x Enterprise cluster** across AWS VPCs using **AWS PrivateLink**, all traffic over **port 443 only**.
 
