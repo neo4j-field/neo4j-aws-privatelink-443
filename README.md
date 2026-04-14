@@ -104,7 +104,7 @@ config/
 
 - AWS account with VPC admin permissions
 - Neo4j Enterprise 5.x license (tested with 5.26)
-- A registered domain (e.g. `your-domain.com`) with ability to add DNS records
+- A registered domain (e.g. `neo4jfield.org`) with ability to add DNS records
 - A wildcard or SAN TLS certificate and key for `*.your-domain.com`
 - EC2 key pair for SSH access
 - Neo4j installed on 3 EC2 instances (Amazon Linux 2023 recommended)
