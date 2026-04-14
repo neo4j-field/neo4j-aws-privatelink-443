@@ -4,7 +4,7 @@ This repository provides a production-tested, step-by-step guide for exposing a 
 
 Two approaches are documented:
 
-| | Approach 1 — HAProxy + NLB | Approach 2 — NES (No HAProxy) |
+| | Approach 1: HAProxy + NLB + PrivateLink | Approach 2: NES (No HAProxy) + PrivateLink|
 |---|---|---|
 | Access | HTTPS (Browser) + Bolt | Bolt only (via NES) |
 | HAProxy | Required on each cluster node | Not needed |
