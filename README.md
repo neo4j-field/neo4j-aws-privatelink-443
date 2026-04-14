@@ -9,7 +9,7 @@ Two approaches are documented:
 | Access | HTTPS (Browser) + Bolt | Bolt only (via NES) |
 | HAProxy | Installed on each cluster node | Not needed |
 | Client tooling | Any browser or driver | Neo4j Enterprise Studio (EAP) |
-| Port | 443 for all traffic | 443 for Bolt only |
+| Port | 443 for all traffic (https & bolt+s) | 443 for Bolt only |
 
 ---
 
