@@ -92,7 +92,6 @@ Two separate **Private Hosted Zones (PHZs)** implement split-horizon DNS — eac
 | `east-b.neo4jfield.org` | `10.0.26.126` (Node B) | `192.168.2.74`, `192.168.3.26` |
 | `east-c.neo4jfield.org` | `10.0.47.163` (Node C) | `192.168.2.74`, `192.168.3.26` |
 | `studio.neo4jfield.org` | — | `192.168.1.43` |
-| `bolt-noproxy.neo4jfield.org` | — | `3.82.20.139` |
 
 > In the Consumer VPC, all `east-*.neo4jfield.org` hostnames resolve to the **same PrivateLink endpoint ENI IPs**. Per-node routing (to Node A, B, or C) is handled by **HAProxy via SNI inspection** on port 443 (Approach 1 only).
 
