@@ -7,7 +7,7 @@ Two approaches are documented:
 | | Approach 1: HAProxy + NLB + PrivateLink | Approach 2: NES (No HAProxy) + PrivateLink|
 |---|---|---|
 | Access | HTTPS (Browser) + Bolt | Bolt only (via NES) |
-| HAProxy | Required on each cluster node | Not needed |
+| HAProxy | Installed on each cluster node | Not needed |
 | Client tooling | Any browser or driver | Neo4j Enterprise Studio (EAP) |
 | Port | 443 for all traffic | 443 for Bolt only |
 
