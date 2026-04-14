@@ -87,13 +87,28 @@ config/
 
 ---
 
-## Port Reference
+## Port Reference: Approach 1 — HAProxy + NLB + PrivateLink
 
 | Port | Protocol | Component | Direction |
 |---|---|---|---|
-| 443 | TCP/TLS | HAProxy frontend / NES Bolt | Consumer → Provider |
+| 443 | TCP/TLS | HAProxy frontend | Consumer → NLB → HAProxy |
 | 7473 | TCP/TLS | Neo4j HTTPS (Browser) | HAProxy → Neo4j (internal) |
-| 7687 | TCP/TLS | Neo4j Bolt | HAProxy → Neo4j / PrivateLink Bolt |
+| 7687 | TCP/TLS | Neo4j Bolt | HAProxy → Neo4j (internal) |
+
+---
+
+## Port Reference: Approach 2 — NES (No HAProxy) + PrivateLink
+
+| Port | Protocol | Component | Direction |
+|---|---|---|---|
+| 443 | TCP/TLS | Neo4j Bolt (via NES) | Consumer → NLB → Neo4j |
+
+---
+
+## Port Reference: Internal Cluster Communication
+
+| Port | Protocol | Component | Direction |
+|---|---|---|---|
 | 7688 | TCP | Neo4j Bolt Routing (intra-cluster) | Node → Node |
 | 6000 | TCP | Cluster discovery (V2) | Node → Node |
 | 7000 | TCP | RAFT consensus | Node → Node |
