@@ -2,69 +2,69 @@
 <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
   <hashTree>
     <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Neo4j - HAProxy vs Direct Performance Test" enabled="true">
-      <stringProp name="TestPlan.comments">Compares Neo4j HTTP Query API v2 response times when reached via HAProxy (port 443) vs directly on the Neo4j HTTPS port (7473, HAProxy bypassed). See performance-testing/README.md for setup.</stringProp>
+      <stringProp name="TestPlan.comments">Compares Neo4j HTTP Query API v2 response times when reached via HAProxy (port 443) vs directly on the Neo4j HTTPS port (7473, HAProxy bypassed). See performance-testing/README.md for setup. All variables below are overridable from the command line with -JNAME=value.</stringProp>
       <boolProp name="TestPlan.functional_mode">false</boolProp>
       <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
       <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
         <collectionProp name="Arguments.arguments">
           <elementProp name="PROTOCOL" elementType="Argument">
             <stringProp name="Argument.name">PROTOCOL</stringProp>
-            <stringProp name="Argument.value">https</stringProp>
+            <stringProp name="Argument.value">${__P(PROTOCOL,https)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="VIA_HAPROXY_HOST" elementType="Argument">
             <stringProp name="Argument.name">VIA_HAPROXY_HOST</stringProp>
-            <stringProp name="Argument.value">52.87.244.38</stringProp>
+            <stringProp name="Argument.value">${__P(VIA_HAPROXY_HOST,3.83.100.223)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="VIA_HAPROXY_PORT" elementType="Argument">
             <stringProp name="Argument.name">VIA_HAPROXY_PORT</stringProp>
-            <stringProp name="Argument.value">443</stringProp>
+            <stringProp name="Argument.value">${__P(VIA_HAPROXY_PORT,443)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="DIRECT_HOST" elementType="Argument">
             <stringProp name="Argument.name">DIRECT_HOST</stringProp>
-            <stringProp name="Argument.value">localhost</stringProp>
+            <stringProp name="Argument.value">${__P(DIRECT_HOST,localhost)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="DIRECT_PORT" elementType="Argument">
             <stringProp name="Argument.name">DIRECT_PORT</stringProp>
-            <stringProp name="Argument.value">7473</stringProp>
+            <stringProp name="Argument.value">${__P(DIRECT_PORT,7473)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="NEO4J_DATABASE" elementType="Argument">
             <stringProp name="Argument.name">NEO4J_DATABASE</stringProp>
-            <stringProp name="Argument.value">neo4j</stringProp>
+            <stringProp name="Argument.value">${__P(NEO4J_DATABASE,neo4j)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="NEO4J_USER" elementType="Argument">
             <stringProp name="Argument.name">NEO4J_USER</stringProp>
-            <stringProp name="Argument.value">neo4j</stringProp>
+            <stringProp name="Argument.value">${__P(NEO4J_USER,neo4j)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="NEO4J_PASSWORD" elementType="Argument">
             <stringProp name="Argument.name">NEO4J_PASSWORD</stringProp>
-            <stringProp name="Argument.value">CHANGE_ME</stringProp>
+            <stringProp name="Argument.value">${__P(NEO4J_PASSWORD,CHANGE_ME)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="CYPHER_STATEMENT" elementType="Argument">
             <stringProp name="Argument.name">CYPHER_STATEMENT</stringProp>
-            <stringProp name="Argument.value">RETURN 1 AS ok</stringProp>
+            <stringProp name="Argument.value">${__P(CYPHER_STATEMENT,RETURN 1 AS ok)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="THREADS" elementType="Argument">
             <stringProp name="Argument.name">THREADS</stringProp>
-            <stringProp name="Argument.value">10</stringProp>
+            <stringProp name="Argument.value">${__P(THREADS,10)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="RAMPUP" elementType="Argument">
             <stringProp name="Argument.name">RAMPUP</stringProp>
-            <stringProp name="Argument.value">5</stringProp>
+            <stringProp name="Argument.value">${__P(RAMPUP,5)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="LOOPS" elementType="Argument">
             <stringProp name="Argument.name">LOOPS</stringProp>
-            <stringProp name="Argument.value">50</stringProp>
+            <stringProp name="Argument.value">${__P(LOOPS,50)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
         </collectionProp>
@@ -90,15 +90,24 @@
         <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
       </ThreadGroup>
       <hashTree>
+        <AuthManager guiclass="AuthPanel" testclass="AuthManager" testname="HTTP Authorization Manager" enabled="true">
+          <collectionProp name="AuthManager.auth_list">
+            <elementProp name="" elementType="Authorization">
+              <stringProp name="Authorization.url"></stringProp>
+              <stringProp name="Authorization.username">${NEO4J_USER}</stringProp>
+              <stringProp name="Authorization.password">${NEO4J_PASSWORD}</stringProp>
+              <stringProp name="Authorization.realm"></stringProp>
+              <stringProp name="Authorization.domain"></stringProp>
+              <stringProp name="Authorization.mechanism">BASIC</stringProp>
+            </elementProp>
+          </collectionProp>
+        </AuthManager>
+        <hashTree/>
         <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Header Manager" enabled="true">
           <collectionProp name="HeaderManager.headers">
             <elementProp name="" elementType="Header">
               <stringProp name="Header.name">Content-Type</stringProp>
               <stringProp name="Header.value">application/json</stringProp>
-            </elementProp>
-            <elementProp name="" elementType="Header">
-              <stringProp name="Header.name">Authorization</stringProp>
-              <stringProp name="Header.value">Basic ${__base64Encode(${NEO4J_USER}:${NEO4J_PASSWORD})}</stringProp>
             </elementProp>
           </collectionProp>
         </HeaderManager>
@@ -150,7 +159,7 @@
               <fieldNames>true</fieldNames>
               <responseHeaders>false</responseHeaders>
               <requestHeaders>false</requestHeaders>
-              <responseDataOnError>false</responseDataOnError>
+              <responseDataOnError>true</responseDataOnError>
               <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
               <connectTime>true</connectTime>
               <url>true</url>
@@ -180,15 +189,24 @@
         <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
       </ThreadGroup>
       <hashTree>
+        <AuthManager guiclass="AuthPanel" testclass="AuthManager" testname="HTTP Authorization Manager" enabled="true">
+          <collectionProp name="AuthManager.auth_list">
+            <elementProp name="" elementType="Authorization">
+              <stringProp name="Authorization.url"></stringProp>
+              <stringProp name="Authorization.username">${NEO4J_USER}</stringProp>
+              <stringProp name="Authorization.password">${NEO4J_PASSWORD}</stringProp>
+              <stringProp name="Authorization.realm"></stringProp>
+              <stringProp name="Authorization.domain"></stringProp>
+              <stringProp name="Authorization.mechanism">BASIC</stringProp>
+            </elementProp>
+          </collectionProp>
+        </AuthManager>
+        <hashTree/>
         <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Header Manager" enabled="true">
           <collectionProp name="HeaderManager.headers">
             <elementProp name="" elementType="Header">
               <stringProp name="Header.name">Content-Type</stringProp>
               <stringProp name="Header.value">application/json</stringProp>
-            </elementProp>
-            <elementProp name="" elementType="Header">
-              <stringProp name="Header.name">Authorization</stringProp>
-              <stringProp name="Header.value">Basic ${__base64Encode(${NEO4J_USER}:${NEO4J_PASSWORD})}</stringProp>
             </elementProp>
           </collectionProp>
         </HeaderManager>
@@ -240,7 +258,7 @@
               <fieldNames>true</fieldNames>
               <responseHeaders>false</responseHeaders>
               <requestHeaders>false</requestHeaders>
-              <responseDataOnError>false</responseDataOnError>
+              <responseDataOnError>true</responseDataOnError>
               <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
               <connectTime>true</connectTime>
               <url>true</url>

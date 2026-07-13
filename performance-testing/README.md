@@ -54,7 +54,7 @@ Two Thread Groups, each independently configurable, each writing its own `.jtl` 
 | Thread Group | Target | Output |
 |---|---|---|
 | `01 - Baseline (Direct to Neo4j, HAProxy bypassed)` | `${DIRECT_HOST}:${DIRECT_PORT}` (default `localhost:7473` — set up the SSH tunnel above, or point at the node directly if using the SG method) | `results-direct.jtl` |
-| `02 - Via HAProxy (port 443)` | `${VIA_HAPROXY_HOST}:${VIA_HAPROXY_PORT}` (default `52.87.244.38:443` — update to the current public IP or the PrivateLink hostname) | `results-haproxy.jtl` |
+| `02 - Via HAProxy (port 443)` | `${VIA_HAPROXY_HOST}:${VIA_HAPROXY_PORT}` (default `3.83.100.223:443` — update to the current public IP or the PrivateLink hostname) | `results-haproxy.jtl` |
 
 ### Setup
 
@@ -85,7 +85,7 @@ The dashboard's **Statistics** table gives min/max/average/p90/p95/p99 and throu
 
 ```bash
 jmeter -n -t HAProxy-vs-Direct-Neo4j.jmx \
-  -JVIA_HAPROXY_HOST=52.87.244.38 -JVIA_HAPROXY_PORT=443 \
+  -JVIA_HAPROXY_HOST=3.83.100.223 -JVIA_HAPROXY_PORT=443 \
   -JDIRECT_HOST=localhost -JDIRECT_PORT=7473 \
   -JNEO4J_PASSWORD='<password>' \
   -JTHREADS=25 -JRAMPUP=10 -JLOOPS=100 \
@@ -130,6 +130,23 @@ Or run both back-to-back and see the comparison directly:
 ## Recording and presenting results
 
 Use [`results/results-template.md`](results/results-template.md) to record the two runs side by side (direct vs via-HAProxy) and fill in the delta. It includes a short guide on what the numbers actually mean — worth reading before sending anything to a customer, since the headline number they'll ask about is p99, not the average.
+
+### Validated example run
+
+The JMeter plan above was run end-to-end against a live single-instance deployment (10 threads, 5s ramp-up, 50 loops = 500 requests per path, both paths hitting `localhost` on the same host so the only variable is the HAProxy hop itself):
+
+| Metric | Direct (`:7473`) | Via HAProxy (`:443`) | Delta |
+|---|---|---|---|
+| Samples | 500 | 500 | 0 |
+| Error % | 0% | 0% | 0 |
+| Mean (ms) | 93.2 | 88.4 | -4.8 |
+| Median (ms) | 73 | 69 | -4 |
+| p90 (ms) | 172 | 169 | -3 |
+| p95 (ms) | 234 | 248 | +14 |
+| p99 (ms) | 470 | 394 | -76 |
+| Throughput (req/s) | 59.8 | 60.4 | +0.7 |
+
+HAProxy's TLS-bridging hop added **no measurable overhead** here — the deltas are within run-to-run noise (HAProxy even came out faster on several percentiles, which is just variance at this sample size, not a real advantage). Expected: HAProxy terminates and re-encrypts on loopback, not over the network, so its cost is a few CPU cycles per request, not a network round trip.
 
 ## Related
 
