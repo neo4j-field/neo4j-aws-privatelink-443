@@ -46,6 +46,7 @@ Provider VPC (us-east-1)
 2. [Approach 1 — HAProxy + NLB + PrivateLink](docs/02-approach-haproxy.md)
 3. [Approach 2 — NES (Neo4j Enterprise Studio, no HAProxy)](docs/03-approach-nes.md)
 4. [Comparison: Pros and Cons](docs/04-comparison.md)
+5. [Performance Testing: Quantifying HAProxy's Overhead](docs/05-performance-testing.md)
 
 ---
 

@@ -1,0 +1,54 @@
+{
+  "info": {
+    "name": "Neo4j - HAProxy vs Direct Performance Test",
+    "description": "Runs the same Cypher query against Neo4j's HTTP Query API v2. Point this collection at the 'via-haproxy' or 'direct-baseline' environment to compare response times with and without HAProxy in the path. See performance-testing/README.md in the neo4j-aws-privatelink-443 repo for setup and how to run at scale with Newman.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Run Cypher Query (Query API v2)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "console.log('[' + pm.environment.get('label') + '] response time (ms): ' + pm.response.responseTime);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{neo4jUser}}", "type": "string" },
+            { "key": "password", "value": "{{neo4jPassword}}", "type": "string" }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"statement\": \"{{cypherStatement}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/db/{{database}}/query/v2",
+          "host": ["{{baseUrl}}"],
+          "path": ["db", "{{database}}", "query", "v2"]
+        },
+        "description": "POSTs a trivial Cypher statement (RETURN 1) to the Neo4j Query API v2 endpoint. baseUrl comes from the active environment — swap environments to switch between the via-HAProxy path (port 443) and the direct baseline path (port 7473, HAProxy bypassed)."
+      }
+    }
+  ]
+}
