@@ -14,10 +14,10 @@ This works unchanged whichever config variant is deployed ([`approach-1-haproxy`
 
 ## Test topology
 
-The two paths, side by side — same client, same query, same network; the only difference is whether HAProxy is in the request path:
+The two paths, one per row — same client, same query, same network; the only difference is whether HAProxy is in the request path:
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph PathA["Path A — Direct baseline (HAProxy bypassed)"]
         direction LR
         subgraph PathA_Loc["Provider VPC — us-east-1 (same VPC as Neo4j)"]
