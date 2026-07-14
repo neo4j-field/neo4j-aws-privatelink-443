@@ -2,7 +2,7 @@
 
 Run [`seed-data.cypher`](seed-data.cypher) once before using any of these — they all target the `:PerfTestPerson` dataset it creates (10,000 nodes, indexed on `id`, grouped into 20 synthetic cities with a `FOLLOWS` ring per city).
 
-The JMeter plan and Postman collection default to the **point lookup** below, with `id` randomized per request (`1`–`10000`) so the test spreads across the dataset instead of hammering one cached node.
+The JMeter plan defaults to the **point lookup** below, with `id` randomized per request (`1`–`10000`) so the test spreads across the dataset instead of hammering one cached node.
 
 ## Point lookup (default — indexed, ~O(1))
 

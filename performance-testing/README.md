@@ -1,57 +1,78 @@
 # Performance Testing — HAProxy vs Direct
 
-Test scripts a customer can run themselves to answer one question: **how much latency does HAProxy add?**
+A JMeter test plan a customer can run themselves to answer one question: **how much latency does HAProxy add?**
 
-Both tools here hit the same endpoint — Neo4j's [HTTP Query API v2](https://neo4j.com/docs/query-api/current/) (`POST /db/{database}/query/v2`) — once **via HAProxy on port 443** (the real client path in Approach 1 and Approach 3) and once **directly against Neo4j's native HTTPS port `7473`, with HAProxy bypassed** (the baseline). Same query, same client, same network — the only variable is whether HAProxy sits in the path. Whatever difference shows up in the results *is* HAProxy's cost.
+It hits Neo4j's [HTTP Query API v2](https://neo4j.com/docs/query-api/current/) (`POST /db/{database}/query/v2`) — once **via HAProxy on port 443** (the real client path in Approach 1 and Approach 3) and once **directly against Neo4j's native HTTPS port `7473`, with HAProxy bypassed** (the baseline). Same query, same client, same network — the only variable is whether HAProxy sits in the path. Whatever difference shows up in the results *is* HAProxy's cost.
 
 This works unchanged whichever config variant is deployed ([`approach-1-haproxy`](../config/approach-1-haproxy/), [`approach-3-lts-single-instance`](../config/approach-3-lts-single-instance/), or [`approach-3-lts-cluster-tls-bridging`](../config/approach-3-lts-cluster-tls-bridging/)) — all of them front the same Neo4j HTTPS port `7473` with HAProxy on `443`.
 
-> **Approach 2 (NES, no HAProxy) is out of scope here.** NES is Bolt-only with no HTTP surface, so it isn't reachable with JMeter/Postman's HTTP samplers — a fair comparison against NES needs a Bolt driver script (see [`examples/`](../examples/)), not an HTTP tool.
+> **Approach 2 (NES, no HAProxy) is out of scope here.** NES is Bolt-only with no HTTP surface, so it isn't reachable with JMeter's HTTP sampler — a fair comparison against NES needs a Bolt driver script (see [`examples/`](../examples/)), not an HTTP tool.
 
-> **Bolt also works on 443 in Approaches 1 and 3 — this test doesn't cover that path.** HAProxy demuxes by peeking the first few bytes after TLS termination: Bolt's magic handshake (`60 60 B0 17`) routes to the Bolt backend, anything else routes to HTTPS — so a `bolt+s://` or `neo4j+s://` driver connecting on port 443 from the Central VPC works transparently, same port, same HAProxy. JMeter/Postman's HTTP samplers can't drive that path (no HTTP request is involved); it's already validated in [`examples/neo4j_privatelink_demo.py`](../examples/neo4j_privatelink_demo.py). If you want a JMeter-style load comparison for Bolt specifically, that needs a driver-based load generator (e.g. a small Python/Java script spinning up N sessions), not JMeter/Postman — ask if that's wanted and it can be added alongside this.
+> **Bolt also works on 443 in Approaches 1 and 3 — this test doesn't cover that path.** HAProxy demuxes by peeking the first few bytes after TLS termination: Bolt's magic handshake (`60 60 B0 17`) routes to the Bolt backend, anything else routes to HTTPS — so a `bolt+s://` or `neo4j+s://` driver connecting on port 443 from the Central VPC works transparently, same port, same HAProxy. JMeter's HTTP sampler can't drive that path (no HTTP request is involved); it's already validated in [`examples/neo4j_privatelink_demo.py`](../examples/neo4j_privatelink_demo.py). If you want a load comparison for Bolt specifically, that needs a driver-based load generator (e.g. a small Python/Java script spinning up N sessions), not JMeter — ask if that's wanted and it can be added alongside this.
+
+---
+
+## Test topology
+
+The two paths, side by side — same client, same query, same network; the only difference is whether HAProxy is in the request path:
+
+```mermaid
+flowchart LR
+    subgraph PathA["Path A — Direct baseline (HAProxy bypassed)"]
+        direction LR
+        C1["JMeter<br/>test client"] -->|"HTTPS :7473<br/>Query API v2"| N1[("Neo4j")]
+    end
+
+    subgraph PathB["Path B — Via HAProxy (real client path)"]
+        direction LR
+        C2["JMeter<br/>test client"] -->|"HTTPS :443"| H["HAProxy<br/>TLS terminate + re-encrypt<br/>(magic-byte demux)"]
+        H -->|"HTTPS :7473<br/>Query API v2"| N2[("Neo4j")]
+    end
+
+    style N1 fill:#0B3D2E,stroke:#4CAF50,color:#fff
+    style N2 fill:#0B3D2E,stroke:#4CAF50,color:#fff
+    style H fill:#3A2E00,stroke:#FFB300,color:#fff
+    style C1 fill:#12263A,stroke:#4C8BF5,color:#fff
+    style C2 fill:#12263A,stroke:#4C8BF5,color:#fff
+```
+
+**Path A** measures Neo4j's raw response time with nothing in front of it. **Path B** adds exactly one hop: HAProxy terminating client TLS and re-encrypting to Neo4j (on loopback, same host — see [`config/approach-3-lts-cluster-tls-bridging/README.md`](../config/approach-3-lts-cluster-tls-bridging/README.md) for how the TLS-bridging + magic-byte demux works). **B minus A is HAProxy's cost** — that's the whole test.
 
 ---
 
 ## Test data
 
-Both tools default to a real indexed point lookup against a small synthetic dataset, not `RETURN 1`. Seed it once before running either tool:
+The test defaults to a real indexed point lookup against a small synthetic dataset, not `RETURN 1`. Seed it once before running:
 
 ```bash
 cypher-shell -a bolt+ssc://<host>:7687 -u neo4j -p '<password>' -f seed-data.cypher
 ```
 
-This creates 10,000 `:PerfTestPerson` nodes (unique-constrained on `id`, grouped into 20 synthetic cities with a `FOLLOWS` ring per city) — see [`seed-data.cypher`](seed-data.cypher). The default query in both tools is:
+This creates 10,000 `:PerfTestPerson` nodes (unique-constrained on `id`, grouped into 20 synthetic cities with a `FOLLOWS` ring per city) — see [`seed-data.cypher`](seed-data.cypher). The default query is:
 
 ```cypher
 MATCH (p:PerfTestPerson {id: $id}) RETURN p.id AS id, p.name AS name, p.email AS email, p.city AS city
 ```
 
-with `id` randomized per request (1–10000) so load spreads across the dataset instead of hammering one page-cached node. Two heavier alternatives (a non-indexed filtered scan, and a 1-hop relationship traversal) are in [`queries.md`](queries.md) if you want the comparison under more realistic query cost.
+with `id` randomized per request (1–10000, via JMeter's `__Random` function) so load spreads across the dataset instead of hammering one page-cached node. Two heavier alternatives (a non-indexed filtered scan, and a 1-hop relationship traversal) are in [`queries.md`](queries.md) if you want the comparison under more realistic query cost.
 
 ---
 
-## Tool choice
+## Why JMeter
 
-| | **JMeter** (recommended primary) | **Postman / Newman** (quick check) |
-|---|---|---|
-| Best for | Concurrent load, percentile latency (p90/p95/p99), throughput | Fast sanity check, no install if the customer already has Postman |
-| Output | Aggregate Report / HTML Dashboard with full percentile breakdown | CLI summary with average/min/max response time |
-| Setup effort | Install JMeter (Java-based) | Install Newman (`npm install -g newman`), or use Postman desktop app directly |
-| Why | Purpose-built for exactly this: N concurrent virtual users, statistically meaningful latency distribution under load | Easiest to hand to someone non-technical, or to run once from a laptop with zero setup if they already have Postman |
-
-**Use JMeter for the number that goes in front of a customer** (percentiles under realistic concurrency). Use Postman/Newman if you just want a fast "is this even in the right ballpark" check, or if the customer's team is more comfortable in Postman than JMeter.
+Purpose-built for exactly this: N concurrent virtual users, statistically meaningful latency distribution under load, an Aggregate Report / HTML Dashboard with full percentile breakdown (p90/p95/p99) and throughput — the numbers that actually matter when telling a customer whether HAProxy's overhead is acceptable. A single Postman/curl request can't produce a percentile distribution under concurrency; JMeter can, out of the box.
 
 ---
 
 ## Prerequisites
 
-1. **A test-runner host with the right tools installed.** [`setup-test-runner.sh`](setup-test-runner.sh) installs Java, Node.js/npm, Newman, and JMeter 5.6.3 on a fresh RHEL/Amazon Linux host — run it on whatever machine will actually issue the requests (a bastion in the same VPC as Neo4j, or the customer's own workstation for Postman).
+1. **A test-runner host with JMeter installed.** [`setup-test-runner.sh`](setup-test-runner.sh) installs Java and JMeter 5.6.3 on a fresh RHEL/Amazon Linux host — run it on whatever machine will actually issue the requests (a bastion in the same VPC as Neo4j, or Neo4j's own host for a same-box validation run).
 
 2. **Neo4j reachable on two paths from that test-runner host:**
    - Via HAProxy: `https://<host>:443` (the normal client path)
    - Direct: `https://<host>:7473` — Neo4j's native HTTPS port, bypassing HAProxy entirely
 
-   **If the test runner is inside the same VPC as Neo4j** (e.g. another EC2 instance, or JMeter running on the Neo4j box itself), the private IP works for both paths with no security group changes at all — that's the default in both tool configs here (`10.0.153.25`, this deployment's current private IP; update to whatever yours is). This is the recommended setup: it's a real path through the NIC (not a `localhost`-only loopback shortcut) without touching a security group.
+   **If the test runner is inside the same VPC as Neo4j** (e.g. another EC2 instance, or JMeter running on the Neo4j box itself), the private IP works for both paths with no security group changes at all — that's the default in the test plan here (`10.0.153.25`, this deployment's current private IP; update to whatever yours is). This is the recommended setup: it's a real path through the NIC (not a `localhost`-only loopback shortcut) without touching a security group.
 
    **If the test runner is outside the VPC** (customer's laptop, a box in a different VPC without a private route), `7473` isn't reachable by design — only `443` is meant to be exposed. To still get a fair "HAProxy bypassed" baseline, pick one:
    - **SSH tunnel** — `ssh -i <key>.pem -L 7473:localhost:7473 ec2-user@<node-public-ip>`, then point the "direct" target at `localhost:7473`. No security group changes, but the tunnel itself adds a small amount of overhead under heavy concurrency.
@@ -62,7 +83,7 @@ with `id` randomized per request (1–10000) so load spreads across the dataset 
 
 ---
 
-## Option A — JMeter
+## The test plan
 
 **File:** [`jmeter/HAProxy-vs-Direct-Neo4j.jmx`](jmeter/HAProxy-vs-Direct-Neo4j.jmx)
 
@@ -117,68 +138,23 @@ All variables (including `CYPHER_STATEMENT` and `SEED_MAX_ID`) are wired through
 
 ---
 
-## Option B — Postman / Newman
-
-**Files:** [`postman/Neo4j-HAProxy-vs-Direct.postman_collection.json`](postman/Neo4j-HAProxy-vs-Direct.postman_collection.json), [`postman/via-haproxy.postman_environment.json`](postman/via-haproxy.postman_environment.json), [`postman/direct-baseline.postman_environment.json`](postman/direct-baseline.postman_environment.json)
-
-One collection, one request — the two environments swap `baseUrl` between the HAProxy path (`:443`) and the direct baseline (`:7473`). Edit `baseUrl`, `neo4jUser`, `neo4jPassword`, and `seedMaxId` in each environment file (or in the Postman UI) before running. A pre-request script randomizes `id` (1–`seedMaxId`) on every call so, like the JMeter plan, it spreads reads across the seeded dataset instead of hitting one cached row.
-
-### Quick check in the Postman app
-
-1. Import the collection and both environment files.
-2. Select the **direct-baseline** environment, open the request, hit **Send** a few times, note the response time shown in the Postman UI.
-3. Switch to the **via-haproxy** environment, repeat.
-4. For something more statistically meaningful, use the **Collection Runner** with 50–100 iterations against each environment and compare the average response time it reports.
-
-### At the command line with Newman (repeatable, scriptable)
-
-```bash
-npm install -g newman
-cd performance-testing/postman
-
-newman run Neo4j-HAProxy-vs-Direct.postman_collection.json \
-  -e direct-baseline.postman_environment.json -n 50
-
-newman run Neo4j-HAProxy-vs-Direct.postman_collection.json \
-  -e via-haproxy.postman_environment.json -n 50
-```
-
-Or run both back-to-back and see the comparison directly:
-```bash
-./run-comparison.sh 50
-```
-
----
-
 ## Recording and presenting results
 
-Use [`results/results-template.md`](results/results-template.md) to record the two runs side by side (direct vs via-HAProxy) and fill in the delta. It includes a short guide on what the numbers actually mean — worth reading before sending anything to a customer, since the headline number they'll ask about is p99, not the average.
+Use [`results/results-template.md`](results/results-template.md) to record a run's direct-vs-via-HAProxy numbers and fill in the delta. It includes a short guide on what the numbers actually mean — worth reading before sending anything to a customer, since the headline number they'll ask about is p99, not the average.
 
 ### Validated example run
 
-The JMeter plan was run end-to-end against a live single-instance deployment with the real dataset seeded (10 threads, 5s ramp-up, 50 loops = 500 requests per path, both paths hitting the instance's private IP so the only variable is the HAProxy hop itself) — actual indexed point lookups against `:PerfTestPerson`, not `RETURN 1`:
+The test plan was run end-to-end against a live single-instance deployment with the real dataset seeded (10 threads, 5s ramp-up, 500 requests per path, both paths hitting the instance's private IP) — actual indexed point lookups against `:PerfTestPerson`, not `RETURN 1`. Mean/median/p90 came out within noise; p99 was meaningfully higher via HAProxy (797ms vs 515ms), traced to 2 outlier requests rather than a systemic shift — full breakdown, response-time distribution, and the draft verdict are in **[`results/2026-07-13-validated-run.md`](results/2026-07-13-validated-run.md)** (renders directly on GitHub). The interactive HTML dashboard with the response-time-over-time graphs is at [`results/sample-report/index.html`](results/sample-report/index.html) (download/clone to view — GitHub doesn't render standalone HTML inline).
 
-| Metric | Direct (`:7473`) | Via HAProxy (`:443`) | Delta |
-|---|---|---|---|
-| Samples | 500 | 500 | 0 |
-| Error % | 0% | 0% | 0 |
-| Mean (ms) | 58.0 | 60.5 | +2.5 |
-| Median (ms) | 33 | 31 | -2 |
-| p90 (ms) | 118.6 | 115.8 | -2.8 |
-| p95 (ms) | 223.6 | 198.6 | -25 |
-| p99 (ms) | 515.0 | 797.4 | +282.4 |
-| Throughput (req/s) | 70.9 | 66.2 | -4.7 |
-
-The full interactive HTML dashboard from this run is checked in at [`results/sample-report/index.html`](results/sample-report/index.html) — open it directly for the response-time graphs, per-percentile breakdown, and error table.
-
-Mean/median/p90 are within noise, same as the `RETURN 1` run. The one number worth flagging: **p99 is meaningfully higher via HAProxy in this run** (797ms vs 515ms). At only 500 samples that's ~5 slow requests driving the whole delta, so it's not yet a confident signal — either way, this is exactly the kind of result the note in [`results/results-template.md`](results/results-template.md) warns about: watch p99, don't stop at the average, and don't treat one 500-sample run at 10 threads as conclusive. Re-run at higher concurrency (`-JTHREADS=25 -JLOOPS=100` or more) before drawing a real conclusion for a customer.
+Treat this as one data point, not a verdict — re-run at higher concurrency (`-JTHREADS=25 -JLOOPS=100` or more) before drawing a real conclusion for a customer.
 
 ## Related
 
-- [`seed-data.cypher`](seed-data.cypher) — creates the `:PerfTestPerson` test dataset both tools query against
+- [`seed-data.cypher`](seed-data.cypher) — creates the `:PerfTestPerson` test dataset the plan queries against
 - [`queries.md`](queries.md) — the default point-lookup query plus two heavier alternatives (filtered scan, 1-hop traversal)
-- [`setup-test-runner.sh`](setup-test-runner.sh) — installs Java/Node/Newman/JMeter on a fresh test-runner host
-- [`results/sample-report/index.html`](results/sample-report/index.html) — full HTML dashboard from the validated example run above
+- [`setup-test-runner.sh`](setup-test-runner.sh) — installs Java/JMeter on a fresh test-runner host
+- [`results/2026-07-13-validated-run.md`](results/2026-07-13-validated-run.md) — full write-up of the validated run above, readable directly on GitHub
+- [`results/sample-report/index.html`](results/sample-report/index.html) — the same run's interactive HTML dashboard (download to view)
 - [`docs/01-architecture.md`](../docs/01-architecture.md) — overall PrivateLink/HAProxy architecture
 - [`docs/04-comparison.md`](../docs/04-comparison.md) — Approach 1 vs Approach 2 trade-offs
 - [`examples/`](../examples/) — Python Bolt-driver demos (useful if a Bolt-level, not HTTP-level, comparison is ever needed)

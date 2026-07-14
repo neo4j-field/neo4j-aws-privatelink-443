@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Installs everything needed to run the HAProxy-vs-Direct performance tests
-# (JMeter + Postman/Newman) on a fresh RHEL/Amazon Linux test-runner host.
+# Installs everything needed to run the HAProxy-vs-Direct JMeter performance
+# test on a fresh RHEL/Amazon Linux test-runner host.
 #
 # Usage:
 #   ./setup-test-runner.sh
@@ -14,7 +14,7 @@ JMETER_URL="https://downloads.apache.org/jmeter/binaries/apache-jmeter-${JMETER_
 JMETER_URL_FALLBACK="https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz"
 INSTALL_DIR="/opt/apache-jmeter-${JMETER_VERSION}"
 
-echo "=== 1/4: Java (required by JMeter) ==="
+echo "=== 1/2: Java (required by JMeter) ==="
 if command -v java >/dev/null 2>&1; then
   echo "Already installed: $(java -version 2>&1 | head -1)"
 else
@@ -22,23 +22,7 @@ else
 fi
 
 echo
-echo "=== 2/4: Node.js + npm (required by Newman) ==="
-if command -v node >/dev/null 2>&1; then
-  echo "Already installed: node $(node -v), npm $(npm -v)"
-else
-  sudo dnf install -y nodejs nodejs-npm
-fi
-
-echo
-echo "=== 3/4: Newman (Postman CLI runner) ==="
-if command -v newman >/dev/null 2>&1; then
-  echo "Already installed: $(newman -v)"
-else
-  sudo npm install -g newman
-fi
-
-echo
-echo "=== 4/4: Apache JMeter ${JMETER_VERSION} ==="
+echo "=== 2/2: Apache JMeter ${JMETER_VERSION} ==="
 if command -v jmeter >/dev/null 2>&1; then
   echo "Already installed: $(jmeter --version 2>&1 | head -1)"
 else
@@ -52,12 +36,9 @@ fi
 echo
 echo "=== Versions ==="
 java -version 2>&1 | head -1
-node -v
-npm -v
-newman -v
 jmeter --version 2>&1 | head -1
 
 echo
-echo "Setup complete. Run the tests from performance-testing/README.md:"
-echo "  JMeter:  jmeter -n -t jmeter/HAProxy-vs-Direct-Neo4j.jmx -l results.jtl -e -o report/"
-echo "  Newman:  cd postman && ./run-comparison.sh 50"
+echo "Setup complete. Seed the test data, then run the test:"
+echo "  cypher-shell -a bolt+ssc://<host>:7687 -u neo4j -p '<password>' -f seed-data.cypher"
+echo "  jmeter -n -t jmeter/HAProxy-vs-Direct-Neo4j.jmx -JNEO4J_PASSWORD='<password>' -l results.jtl -e -o report/"

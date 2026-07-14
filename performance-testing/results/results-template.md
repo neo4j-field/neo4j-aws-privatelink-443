@@ -1,11 +1,11 @@
 # Results — HAProxy vs Direct
 
-Fill in after running the JMeter Aggregate Report (or Newman summary) for both paths against the same target, back-to-back, on the same network.
+Fill in after running the JMeter Aggregate Report for both paths against the same target, back-to-back, on the same network.
 
 **Test date:** _____
 **Target:** _____ (hostname/IP)
 **Cypher statement used:** `RETURN 1 AS ok` (or: _____)
-**Concurrency / iterations:** _____ threads, _____ loops (or Newman `-n` count)
+**Concurrency / iterations:** _____ threads, _____ loops
 
 | Metric | Direct (HAProxy bypassed, :7473) | Via HAProxy (:443) | Delta | Delta % |
 |---|---|---|---|---|
