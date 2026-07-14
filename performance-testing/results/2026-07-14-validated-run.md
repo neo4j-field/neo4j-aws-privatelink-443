@@ -1,56 +1,64 @@
-# Validated Run — 2026-07-14
+# Validated Run — 2026-07-14 (resized instances, c5.4xlarge)
 
 Renders directly on GitHub (no download needed) — the source data is the same run as the interactive dashboard at [`sample-report/index.html`](sample-report/index.html), which has the response-time-over-time graphs if you want those instead.
 
-This run adds a **warm-up phase** (200 untracked requests — 100 per path — via the test plan's `00 - Warm-up` Setup Thread Group) before the measured 500-per-path run, to let JIT compilation, connection establishment, and page cache reach steady state before anything is recorded. Compared to the [previous cold-start run](https://github.com/neo4j-field/neo4j-aws-privatelink-443/blob/f772c37/performance-testing/results/2026-07-13-validated-run.md), every percentile dropped substantially — most of the earlier latency was cold-start cost, not HAProxy or Neo4j.
+This run follows an instance resize — every East-region node (the 3-node cluster and the perf-test box) and the Central VPC test client moved from `t2.medium`/burstable to **`c5.4xlarge`** (16 vCPU, dedicated/non-burstable). It uses the same profile as the previous run superseded by this one (warm-up + 2,500 measured requests/path) so the two are directly comparable.
 
 ## Setup
 
 | | |
 |---|---|
-| Target | Single-instance deployment (`approach-3-lts-single-instance`), private IP `10.0.153.25` |
+| Target | Single-instance deployment (`approach-3-lts-single-instance`), private IP `10.0.153.25`, **c5.4xlarge** |
 | Query | `MATCH (p:PerfTestPerson {id: $id}) RETURN p.id, p.name, p.email, p.city` — indexed point lookup, `id` randomized 1–10000 per request (see [`../queries.md`](../queries.md)) |
 | Dataset | 10,000 `:PerfTestPerson` nodes seeded via [`../seed-data.cypher`](../seed-data.cypher) |
-| Warm-up | 5 threads × 20 loops = 100 untracked requests per path, immediately before the measured run |
-| Load profile | 10 threads, 5s ramp-up, 50 loops/thread = 500 measured requests per path (1000 total measured; 1200 total requests issued) |
-| Tool | JMeter 5.6.3, [`../jmeter/HAProxy-vs-Direct-Neo4j.jmx`](../jmeter/HAProxy-vs-Direct-Neo4j.jmx) |
+| Warm-up | 10 threads × 50 loops = 500 untracked requests per path, immediately before the measured run |
+| Load profile | 25 threads, 10s ramp-up, 100 loops/thread = 2,500 measured requests per path (5,000 total measured; 6,000 total requests issued) |
+| Tool | JMeter 5.6.3, [`../jmeter/HAProxy-vs-Direct-Neo4j.jmx`](../jmeter/HAProxy-vs-Direct-Neo4j.jmx), run via `-JWARMUP_THREADS=10 -JWARMUP_LOOPS=50 -JTHREADS=25 -JRAMPUP=10 -JLOOPS=100` |
+
+**Methodology note (unchanged from before):** the JMeter client and Neo4j+HAProxy still run on the same EC2 instance here, so this isolates HAProxy's own cost rather than the customer's full PrivateLink path (see [Test topology](../README.md#test-topology)). Unlike the previous (`t2.medium`) run, though, same-box CPU contention is no longer a meaningful confound — `c5.4xlarge` has 16 dedicated vCPUs vs. `t2.medium`'s 2 burstable vCPUs, and the numbers below show it: absolute latency dropped by more than an order of magnitude.
 
 ## Results
 
 | Metric | Direct (`:7473`, HAProxy bypassed) | Via HAProxy (`:443`) | Delta |
 |---|---:|---:|---:|
-| Samples | 500 | 500 | 0 |
+| Samples | 2,500 | 2,500 | 0 |
 | Errors | 0 (0%) | 0 (0%) | 0 |
-| Mean (ms) | 16.0 | 22.0 | +6.0 |
-| Median (ms) | 10.0 | 11.0 | +1.0 |
-| p90 (ms) | 23.0 | 26.0 | +3.0 |
-| p95 (ms) | 31.0 | 70.7 | **+39.7** |
-| p99 (ms) | 143.0 | 267.0 | **+124.0** |
-| Min (ms) | 3 | 3 | 0 |
-| Max (ms) | 397 | 810 | +413 |
-| Throughput (req/s) | 98.3 | 94.7 | −3.6 |
-| Received (KB/s) | 29.7 | 28.6 | −1.1 |
-| Sent (KB/s) | 38.0 | 36.1 | −1.9 |
+| Mean (ms) | 2.51 | 2.64 | +0.13 |
+| Median (ms) | 2 | 2 | 0 |
+| p90 (ms) | 4 | 4 | 0 |
+| p95 (ms) | 5 | 5 | 0 |
+| p99 (ms) | 10 | 10 | 0 |
+| Min (ms) | 1 | 1 | 0 |
+| Max (ms) | 25 | 22 | −3 |
+| Throughput (req/s) | 255.5 | 254.9 | −0.6 |
+| Received (KB/s) | 77.3 | 77.1 | −0.2 |
+| Sent (KB/s) | 98.8 | 97.3 | −1.5 |
+
+![Percentile comparison — Direct vs HAProxy](chart-percentiles.png)
 
 ## Response-time distribution
 
 | Bucket | Direct — count (%) | Via HAProxy — count (%) |
 |---|---:|---:|
-| 0–10ms | 210 (42.0%) | 212 (42.4%) |
-| 10–25ms | 248 (49.6%) | 229 (45.8%) |
-| 25–50ms | 24 (4.8%) | 27 (5.4%) |
-| 50–100ms | 8 (1.6%) | 15 (3.0%) |
-| 100–200ms | 7 (1.4%) | 10 (2.0%) |
-| 200–500ms | 3 (0.6%) | 5 (1.0%) |
-| 500–1000ms | 0 (0.0%) | 2 (0.4%) |
-| >1000ms | 0 (0.0%) | 0 (0.0%) |
+| 0–2ms | 304 (12.2%) | 171 (6.8%) |
+| 2–5ms | 2044 (81.8%) | 2173 (86.9%) |
+| 5–10ms | 121 (4.8%) | 125 (5.0%) |
+| 10–15ms | 24 (1.0%) | 25 (1.0%) |
+| 15–20ms | 6 (0.2%) | 4 (0.2%) |
+| 20–25ms | 0 (0.0%) | 2 (0.1%) |
+| 25–50ms | 1 (0.0%) | 0 (0.0%) |
+| >50ms | 0 (0.0%) | 0 (0.0%) |
+
+![Response-time distribution — Direct vs HAProxy](chart-distribution.png)
 
 ## Reading this run
 
-With warm-up in place, the bulk of the distribution (≥87% of requests either way, under 25ms) is close between the two paths — a few milliseconds, consistent with HAProxy's TLS-bridging hop being CPU cost on loopback, not a network round trip. That part matches the earlier cold-start run's conclusion.
+On adequately-sized hardware, **HAProxy's overhead disappears into measurement noise.** p50 through p99 are identical between the two paths (2/4/5/10ms each); the only difference at all is a +0.13ms mean and a *lower* max for HAProxy (22ms vs 25ms — noise, not a real advantage). This is the cleanest possible outcome for the question this test exists to answer.
 
-What's different this time: with cold-start noise removed, **HAProxy shows a small but now-consistent tail cost** — p95 and p99 are both meaningfully higher via HAProxy (not just noise in one direction like the previous run), and it's the only path with any samples over 500ms (2 of 500, both landing under 810ms). At 500 samples this is still a modest n for the tail specifically — worth a higher-concurrency re-run (`-JTHREADS=25 -JLOOPS=100` or more) to see whether that p95/p99 gap holds, shrinks, or grows under real load, since that's the number that actually matters for a customer's SLA conversation.
+Compare this against the two earlier `t2.medium` runs (both superseded by this one): a [500-sample run](https://github.com/neo4j-field/neo4j-aws-privatelink-443/blob/51f46e3/performance-testing/results/2026-07-14-validated-run.md) and a [2,500-sample run](https://github.com/neo4j-field/neo4j-aws-privatelink-443/blob/d82492c/performance-testing/results/2026-07-14-validated-run.md) at the same profile as this one. Both showed real, growing tail-latency costs for HAProxy (+30ms to +124ms at p99). With the resize, that cost is gone. The likely explanation isn't that HAProxy got faster — it's that on the undersized `t2.medium`, HAProxy's extra CPU work (TLS termination + re-encryption) was competing for scarce, bursty CPU credits alongside Neo4j and the JMeter client itself; on `c5.4xlarge` there's enough dedicated CPU that this contention no longer shows up.
 
-## Verdict (draft)
+**Practical implication:** HAProxy's own architectural overhead is genuinely negligible on right-sized hardware. If a customer's production instances are sized comparably to (or larger than) `c5.4xlarge`, this result — not the earlier `t2.medium` runs — is the one to present. If a customer is evaluating this architecture on smaller/burstable instance types, the earlier undersized-hardware results are the more relevant caution.
 
-> With JIT/connection/cache warm-up applied, HAProxy's TLS-bridging hop added ~1-6ms at the median/mean level (noise-level, not customer-noticeable) but a more consistent ~40-124ms at p95/p99 — a real, if still modest, tail-latency cost. Recommend a higher-concurrency re-run before finalizing a number for the customer, since 500 samples is thin for characterizing the tail specifically.
+## Verdict
+
+> On `c5.4xlarge` (16 vCPU, non-burstable) with 2,500 samples per path, HAProxy's TLS-bridging hop is statistically indistinguishable from the direct baseline at every percentile measured (p50 through p99 identical; mean delta +0.13ms). HAProxy is a viable solution with no measurable performance cost on adequately-sized hardware. The caveat: this was measured with client and server on the same host, isolating HAProxy's own cost from PrivateLink/cross-VPC network cost — the two are additive for the customer's real path, but that PrivateLink cost is a separate, well-understood network hop, not something HAProxy itself adds.

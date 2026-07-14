@@ -173,7 +173,7 @@ $(document).ready(function() {
     });
 
     // Creates APDEX table
-    createTable($("#apdexTable"), {"supportsControllersDiscrimination": true, "overall": {"data": [0.99875, 500, 1500, "Total"], "isController": false}, "titles": ["Apdex", "T (Toleration threshold)", "F (Frustration threshold)", "Label"], "items": [{"data": [1.0, 500, 1500, "Run Cypher Query - Direct"], "isController": false}, {"data": [1.0, 500, 1500, "Warm-up - Via HAProxy"], "isController": false}, {"data": [0.998, 500, 1500, "Run Cypher Query - Via HAProxy"], "isController": false}, {"data": [0.995, 500, 1500, "Warm-up - Direct"], "isController": false}]}, function(index, item){
+    createTable($("#apdexTable"), {"supportsControllersDiscrimination": true, "overall": {"data": [0.9983333333333333, 500, 1500, "Total"], "isController": false}, "titles": ["Apdex", "T (Toleration threshold)", "F (Frustration threshold)", "Label"], "items": [{"data": [1.0, 500, 1500, "Run Cypher Query - Direct"], "isController": false}, {"data": [1.0, 500, 1500, "Warm-up - Via HAProxy"], "isController": false}, {"data": [1.0, 500, 1500, "Run Cypher Query - Via HAProxy"], "isController": false}, {"data": [0.98, 500, 1500, "Warm-up - Direct"], "isController": false}]}, function(index, item){
         switch(index){
             case 0:
                 item = item.toFixed(3);
@@ -187,7 +187,7 @@ $(document).ready(function() {
     }, [[0, 0]], 3);
 
     // Create statistics table
-    createTable($("#statisticsTable"), {"supportsControllersDiscrimination": true, "overall": {"data": ["Total", 1200, 0, 0.0, 21.721666666666675, 3, 810, 12.0, 29.0, 54.0, 244.70000000000027, 162.9327902240326, 49.282660811269515, 62.59387729124236], "isController": false}, "titles": ["Label", "#Samples", "FAIL", "Error %", "Average", "Min", "Max", "Median", "90th pct", "95th pct", "99th pct", "Transactions/s", "Received", "Sent"], "items": [{"data": ["Run Cypher Query - Direct", 500, 0, 0.0, 16.034, 3, 397, 10.0, 23.0, 31.0, 142.99, 98.28975820719481, 29.72670071997248, 38.0005098781207], "isController": false}, {"data": ["Warm-up - Via HAProxy", 100, 0, 0.0, 30.339999999999996, 5, 204, 22.0, 44.30000000000004, 97.34999999999985, 203.3999999999997, 68.9655172413793, 20.85735452586207, 26.32341056034483], "isController": false}, {"data": ["Run Cypher Query - Via HAProxy", 500, 0, 0.0, 21.968, 3, 810, 11.0, 26.0, 70.69999999999993, 266.97, 94.66111321469141, 28.63443209248391, 36.135585774801214], "isController": false}, {"data": ["Warm-up - Direct", 100, 0, 0.0, 40.30999999999999, 5, 515, 21.0, 38.900000000000006, 163.49999999999898, 514.7899999999998, 50.8646998982706, 15.390048798321466, 19.663379005595118], "isController": false}]}, function(index, item){
+    createTable($("#statisticsTable"), {"supportsControllersDiscrimination": true, "overall": {"data": ["Total", 6000, 0, 0.0, 8.344333333333315, 1, 2759, 2.0, 11.0, 15.0, 25.0, 429.1538516558186, 129.81184565213505, 164.8645091999857], "isController": false}, "titles": ["Label", "#Samples", "FAIL", "Error %", "Average", "Min", "Max", "Median", "90th pct", "95th pct", "99th pct", "Transactions/s", "Received", "Sent"], "items": [{"data": ["Run Cypher Query - Direct", 2500, 0, 0.0, 2.5056000000000007, 1, 25, 2.0, 4.0, 5.0, 10.0, 255.5192150449714, 77.29037043898201, 98.78372853638592], "isController": false}, {"data": ["Warm-up - Via HAProxy", 500, 0, 0.0, 14.007999999999996, 5, 94, 12.0, 21.0, 27.94999999999999, 91.55000000000041, 363.10820624546113, 109.87143700072622, 138.6201037127814], "isController": false}, {"data": ["Run Cypher Query - Via HAProxy", 2500, 0, 0.0, 2.6408000000000045, 1, 22, 2.0, 4.0, 5.0, 10.0, 254.94595145829086, 77.11099231337957, 97.31665402559658], "isController": false}, {"data": ["Warm-up - Direct", 500, 0, 0.0, 60.39199999999995, 4, 2759, 12.0, 20.0, 25.94999999999999, 2454.020000000001, 121.00677637947724, 36.603840830711526, 46.78211784547435], "isController": false}]}, function(index, item){
         switch(index){
             // Errors pct
             case 3:
@@ -228,7 +228,7 @@ $(document).ready(function() {
     }, [[1, 1]]);
 
         // Create top5 errors by sampler
-    createTable($("#top5ErrorsBySamplerTable"), {"supportsControllersDiscrimination": false, "overall": {"data": ["Total", 1200, 0, "", "", "", "", "", "", "", "", "", ""], "isController": false}, "titles": ["Sample", "#Samples", "#Errors", "Error", "#Errors", "Error", "#Errors", "Error", "#Errors", "Error", "#Errors", "Error", "#Errors"], "items": [{"data": [], "isController": false}, {"data": [], "isController": false}, {"data": [], "isController": false}, {"data": [], "isController": false}]}, function(index, item){
+    createTable($("#top5ErrorsBySamplerTable"), {"supportsControllersDiscrimination": false, "overall": {"data": ["Total", 6000, 0, "", "", "", "", "", "", "", "", "", ""], "isController": false}, "titles": ["Sample", "#Samples", "#Errors", "Error", "#Errors", "Error", "#Errors", "Error", "#Errors", "Error", "#Errors", "Error", "#Errors"], "items": [{"data": [], "isController": false}, {"data": [], "isController": false}, {"data": [], "isController": false}, {"data": [], "isController": false}]}, function(index, item){
         return item;
     }, [[0, 0]], 0);
 
