@@ -20,14 +20,22 @@ The two paths, side by side — same client, same query, same network; the only 
 flowchart LR
     subgraph PathA["Path A — Direct baseline (HAProxy bypassed)"]
         direction LR
-        C1["JMeter<br/>test client"] -->|"HTTPS :7473<br/>Query API v2"| N1[("Neo4j")]
+        subgraph PathA_Loc["Provider VPC — us-east-1 (same VPC as Neo4j)"]
+            C1["JMeter test client<br/>private IP"]
+        end
+        C1 -->|"HTTPS :7473<br/>Query API v2"| N1[("Neo4j")]
     end
 
     subgraph PathB["Path B — Via HAProxy (real client path)"]
         direction LR
-        C2["JMeter<br/>test client"] -->|"HTTPS :443"| H["HAProxy<br/>TLS terminate + re-encrypt<br/>(magic-byte demux)"]
-        H -->|"HTTPS :7473<br/>Query API v2"| N2[("Neo4j")]
+        subgraph PathB_Loc["Consumer VPC — ca-central-1 (customer's location)"]
+            C2["JMeter test client"]
+        end
+        C2 -->|"AWS PrivateLink + NLB<br/>HTTPS :443"| H["HAProxy<br/>TLS terminate + re-encrypt<br/>(magic-byte demux)"]
+        H -->|"HTTPS :7473<br/>Query API v2<br/>(loopback)"| N2[("Neo4j")]
     end
+
+    PathA ~~~ PathB
 
     style N1 fill:#0B3D2E,stroke:#4CAF50,color:#fff
     style N2 fill:#0B3D2E,stroke:#4CAF50,color:#fff
@@ -36,7 +44,9 @@ flowchart LR
     style C2 fill:#12263A,stroke:#4C8BF5,color:#fff
 ```
 
-**Path A** measures Neo4j's raw response time with nothing in front of it. **Path B** adds exactly one hop: HAProxy terminating client TLS and re-encrypting to Neo4j (on loopback, same host — see [`config/approach-3-lts-cluster-tls-bridging/README.md`](../config/approach-3-lts-cluster-tls-bridging/README.md) for how the TLS-bridging + magic-byte demux works). **B minus A is HAProxy's cost** — that's the whole test.
+**Path A** measures Neo4j's raw response time with nothing in front of it, tested from inside the Provider VPC (the only place port `7473` is reachable). **Path B** is the customer's actual path — a client in the Consumer VPC, over AWS PrivateLink, hitting HAProxy on `443`; HAProxy terminates TLS and re-encrypts to Neo4j on loopback (see [`config/approach-3-lts-cluster-tls-bridging/README.md`](../config/approach-3-lts-cluster-tls-bridging/README.md) for how the TLS-bridging + magic-byte demux works). **B minus A is HAProxy's cost** — that's the whole test.
+
+**A note on isolating variables:** running Path B from the Consumer VPC (as diagrammed) measures the *customer's real end-to-end experience*, but it bundles PrivateLink/cross-VPC network cost in with HAProxy's cost. To isolate HAProxy alone, run *both* paths from inside the Provider VPC (private IP for both) — that's what the [validated example run](#validated-example-run) below does. Run both versions if you want to report each number separately: "HAProxy's own overhead" vs. "the full path a customer actually experiences."
 
 ---
 
@@ -87,12 +97,15 @@ Purpose-built for exactly this: N concurrent virtual users, statistically meanin
 
 **File:** [`jmeter/HAProxy-vs-Direct-Neo4j.jmx`](jmeter/HAProxy-vs-Direct-Neo4j.jmx)
 
-Two Thread Groups, each independently configurable, each writing its own `.jtl` results file:
+Three Thread Groups, run in this order:
 
-| Thread Group | Target | Output |
-|---|---|---|
-| `01 - Baseline (Direct to Neo4j, HAProxy bypassed)` | `${DIRECT_HOST}:${DIRECT_PORT}` (default `10.0.153.25:7473` — this deployment's private IP; substitute yours, or `localhost` if tunneling from outside the VPC) | `results-direct.jtl` |
-| `02 - Via HAProxy (port 443)` | `${VIA_HAPROXY_HOST}:${VIA_HAPROXY_PORT}` (default `10.0.153.25:443` — substitute the current private IP, public IP, or PrivateLink hostname depending on where the test runner sits) | `results-haproxy.jtl` |
+| Thread Group | Target | Counted in results? | Output |
+|---|---|---|---|
+| `00 - Warm-up (untracked)` | Both paths, `${WARMUP_THREADS}` threads × `${WARMUP_LOOPS}` loops (default 5×20 = 100 requests/path) | **No** — a Setup Thread Group with no listener attached, runs first and always, purely to get past JIT/connection/page-cache cold start before anything is measured | *(none)* |
+| `01 - Baseline (Direct to Neo4j, HAProxy bypassed)` | `${DIRECT_HOST}:${DIRECT_PORT}` (default `10.0.153.25:7473` — this deployment's private IP; substitute yours, or `localhost` if tunneling from outside the VPC) | Yes | `results-direct.jtl` |
+| `02 - Via HAProxy (port 443)` | `${VIA_HAPROXY_HOST}:${VIA_HAPROXY_PORT}` (default `10.0.153.25:443` — substitute the current private IP, public IP, or PrivateLink hostname depending on where the test runner sits) | Yes | `results-haproxy.jtl` |
+
+Skipping the warm-up matters: an early run without it showed p99s 2-5x higher than the warmed-up numbers below, purely from cold-start effects — not HAProxy, not Neo4j. `WARMUP_LOOPS=0` disables it if you deliberately want cold-start behavior included.
 
 Auth is handled by a native JMeter **HTTP Authorization Manager** (not a hand-built header), so it works out of the box with any JMeter 5.x — no special function support required.
 
@@ -106,6 +119,7 @@ Auth is handled by a native JMeter **HTTP Authorization Manager** (not a hand-bu
    - `NEO4J_USER` / `NEO4J_PASSWORD`
    - `SEED_MAX_ID` — must match however many `:PerfTestPerson` rows `seed-data.cypher` created (default 10000)
    - `THREADS` / `RAMPUP` / `LOOPS` — concurrency profile (defaults: 10 threads, 5s ramp-up, 50 loops each = 500 requests per path)
+   - `WARMUP_THREADS` / `WARMUP_LOOPS` — warm-up profile (default 5 threads × 20 loops = 100 untracked requests per path)
 
 ### Run
 
@@ -144,7 +158,7 @@ Use [`results/results-template.md`](results/results-template.md) to record a run
 
 ### Validated example run
 
-The test plan was run end-to-end against a live single-instance deployment with the real dataset seeded (10 threads, 5s ramp-up, 500 requests per path, both paths hitting the instance's private IP) — actual indexed point lookups against `:PerfTestPerson`, not `RETURN 1`. Mean/median/p90 came out within noise; p99 was meaningfully higher via HAProxy (797ms vs 515ms), traced to 2 outlier requests rather than a systemic shift — full breakdown, response-time distribution, and the draft verdict are in **[`results/2026-07-13-validated-run.md`](results/2026-07-13-validated-run.md)** (renders directly on GitHub). The interactive HTML dashboard with the response-time-over-time graphs is at [`results/sample-report/index.html`](results/sample-report/index.html) (download/clone to view — GitHub doesn't render standalone HTML inline).
+The test plan was run end-to-end (warm-up included) against a live single-instance deployment with the real dataset seeded (10 threads, 5s ramp-up, 500 requests per path, both paths hitting the instance's private IP) — actual indexed point lookups against `:PerfTestPerson`, not `RETURN 1`. With warm-up, both paths dropped to single-digit-millisecond medians; HAProxy showed a small, consistent tail cost (p95 +40ms, p99 +124ms) rather than the noisy either-direction deltas seen in an earlier cold-start run — full breakdown, response-time distribution, and the draft verdict are in **[`results/2026-07-14-validated-run.md`](results/2026-07-14-validated-run.md)** (renders directly on GitHub). The interactive HTML dashboard with the response-time-over-time graphs is at [`results/sample-report/index.html`](results/sample-report/index.html) (download/clone to view — GitHub doesn't render standalone HTML inline).
 
 Treat this as one data point, not a verdict — re-run at higher concurrency (`-JTHREADS=25 -JLOOPS=100` or more) before drawing a real conclusion for a customer.
 
@@ -153,7 +167,7 @@ Treat this as one data point, not a verdict — re-run at higher concurrency (`-
 - [`seed-data.cypher`](seed-data.cypher) — creates the `:PerfTestPerson` test dataset the plan queries against
 - [`queries.md`](queries.md) — the default point-lookup query plus two heavier alternatives (filtered scan, 1-hop traversal)
 - [`setup-test-runner.sh`](setup-test-runner.sh) — installs Java/JMeter on a fresh test-runner host
-- [`results/2026-07-13-validated-run.md`](results/2026-07-13-validated-run.md) — full write-up of the validated run above, readable directly on GitHub
+- [`results/2026-07-14-validated-run.md`](results/2026-07-14-validated-run.md) — full write-up of the validated run above, readable directly on GitHub
 - [`results/sample-report/index.html`](results/sample-report/index.html) — the same run's interactive HTML dashboard (download to view)
 - [`docs/01-architecture.md`](../docs/01-architecture.md) — overall PrivateLink/HAProxy architecture
 - [`docs/04-comparison.md`](../docs/04-comparison.md) — Approach 1 vs Approach 2 trade-offs
