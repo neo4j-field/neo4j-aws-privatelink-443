@@ -158,9 +158,9 @@ Use [`results/results-template.md`](results/results-template.md) to record a run
 
 ### Validated example run
 
-The test plan was run end-to-end (warm-up included) against a live single-instance deployment with the real dataset seeded — 25 threads, 2,500 measured requests per path (5,000 total), both paths hitting the instance's private IP — actual indexed point lookups against `:PerfTestPerson`, not `RETURN 1`. At this sample size the signal is clean: **HAProxy is slower at every percentile**, by a small and fairly constant amount through p95 (+1 to +8ms) that widens at the tail (+30ms at p99). Throughput was identical either way (~158 req/s) — full breakdown, charts, response-time distribution, and the draft verdict are in **[`results/2026-07-14-validated-run.md`](results/2026-07-14-validated-run.md)** (renders directly on GitHub, charts included). The interactive HTML dashboard with the response-time-over-time graphs is at [`results/sample-report/index.html`](results/sample-report/index.html) (download/clone to view — GitHub doesn't render standalone HTML inline).
+The test plan was run end-to-end (warm-up included) against a live single-instance deployment with the real dataset seeded (10 threads, 5s ramp-up, 500 requests per path, both paths hitting the instance's private IP) — actual indexed point lookups against `:PerfTestPerson`, not `RETURN 1`. With warm-up, both paths dropped to single-digit-millisecond medians; HAProxy showed a small, consistent tail cost (p95 +40ms, p99 +124ms) rather than the noisy either-direction deltas seen in an earlier cold-start run — full breakdown, response-time distribution, and the draft verdict are in **[`results/2026-07-14-validated-run.md`](results/2026-07-14-validated-run.md)** (renders directly on GitHub). The interactive HTML dashboard with the response-time-over-time graphs is at [`results/sample-report/index.html`](results/sample-report/index.html) (download/clone to view — GitHub doesn't render standalone HTML inline).
 
-Treat this as a strong data point, not gospel — it's one deployment, one instance size, one query shape. Re-run against your customer's actual instance sizing before finalizing a number for them.
+Treat this as one data point, not a verdict — re-run at higher concurrency (`-JTHREADS=25 -JLOOPS=100` or more) before drawing a real conclusion for a customer.
 
 ## Related
 
