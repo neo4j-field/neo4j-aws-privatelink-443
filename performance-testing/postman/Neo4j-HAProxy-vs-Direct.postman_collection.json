@@ -9,6 +9,16 @@
       "name": "Run Cypher Query (Query API v2)",
       "event": [
         {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const maxId = parseInt(pm.environment.get('seedMaxId') || '10000', 10);",
+              "pm.collectionVariables.set('randomId', Math.floor(Math.random() * maxId) + 1);"
+            ]
+          }
+        },
+        {
           "listen": "test",
           "script": {
             "type": "text/javascript",
@@ -39,7 +49,7 @@
         },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"statement\": \"{{cypherStatement}}\"\n}",
+          "raw": "{\n  \"statement\": \"{{cypherStatement}}\",\n  \"parameters\": { \"id\": {{randomId}} }\n}",
           "options": { "raw": { "language": "json" } }
         },
         "url": {
@@ -47,7 +57,7 @@
           "host": ["{{baseUrl}}"],
           "path": ["db", "{{database}}", "query", "v2"]
         },
-        "description": "POSTs a trivial Cypher statement (RETURN 1) to the Neo4j Query API v2 endpoint. baseUrl comes from the active environment — swap environments to switch between the via-HAProxy path (port 443) and the direct baseline path (port 7473, HAProxy bypassed)."
+        "description": "POSTs a parameterized Cypher point-lookup against the :PerfTestPerson dataset (see performance-testing/seed-data.cypher) to the Neo4j Query API v2 endpoint. 'id' is randomized per request (prerequest script) to spread reads across the dataset instead of hammering one cached node. baseUrl comes from the active environment — swap environments to switch between the via-HAProxy path (port 443) and the direct baseline path (port 7473, HAProxy bypassed)."
       }
     }
   ]

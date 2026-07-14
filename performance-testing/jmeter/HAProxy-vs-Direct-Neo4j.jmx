@@ -14,7 +14,7 @@
           </elementProp>
           <elementProp name="VIA_HAPROXY_HOST" elementType="Argument">
             <stringProp name="Argument.name">VIA_HAPROXY_HOST</stringProp>
-            <stringProp name="Argument.value">${__P(VIA_HAPROXY_HOST,3.83.100.223)}</stringProp>
+            <stringProp name="Argument.value">${__P(VIA_HAPROXY_HOST,10.0.153.25)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="VIA_HAPROXY_PORT" elementType="Argument">
@@ -24,7 +24,7 @@
           </elementProp>
           <elementProp name="DIRECT_HOST" elementType="Argument">
             <stringProp name="Argument.name">DIRECT_HOST</stringProp>
-            <stringProp name="Argument.value">${__P(DIRECT_HOST,localhost)}</stringProp>
+            <stringProp name="Argument.value">${__P(DIRECT_HOST,10.0.153.25)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="DIRECT_PORT" elementType="Argument">
@@ -49,7 +49,12 @@
           </elementProp>
           <elementProp name="CYPHER_STATEMENT" elementType="Argument">
             <stringProp name="Argument.name">CYPHER_STATEMENT</stringProp>
-            <stringProp name="Argument.value">${__P(CYPHER_STATEMENT,RETURN 1 AS ok)}</stringProp>
+            <stringProp name="Argument.value">${__P(CYPHER_STATEMENT,MATCH (p:PerfTestPerson {id: $id}) RETURN p.id AS id\, p.name AS name\, p.email AS email\, p.city AS city)}</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="SEED_MAX_ID" elementType="Argument">
+            <stringProp name="Argument.name">SEED_MAX_ID</stringProp>
+            <stringProp name="Argument.value">${__P(SEED_MAX_ID,10000)}</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="THREADS" elementType="Argument">
@@ -118,7 +123,7 @@
             <collectionProp name="Arguments.arguments">
               <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value">{&#10;  &quot;statement&quot;: &quot;${CYPHER_STATEMENT}&quot;&#10;}</stringProp>
+                <stringProp name="Argument.value">{&#10;  &quot;statement&quot;: &quot;${CYPHER_STATEMENT}&quot;,&#10;  &quot;parameters&quot;: { &quot;id&quot;: ${__Random(1,${SEED_MAX_ID},)} }&#10;}</stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>
             </collectionProp>
@@ -217,7 +222,7 @@
             <collectionProp name="Arguments.arguments">
               <elementProp name="" elementType="HTTPArgument">
                 <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value">{&#10;  &quot;statement&quot;: &quot;${CYPHER_STATEMENT}&quot;&#10;}</stringProp>
+                <stringProp name="Argument.value">{&#10;  &quot;statement&quot;: &quot;${CYPHER_STATEMENT}&quot;,&#10;  &quot;parameters&quot;: { &quot;id&quot;: ${__Random(1,${SEED_MAX_ID},)} }&#10;}</stringProp>
                 <stringProp name="Argument.metadata">=</stringProp>
               </elementProp>
             </collectionProp>

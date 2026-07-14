@@ -1,0 +1,50 @@
+{
+  "Run Cypher Query - Direct" : {
+    "transaction" : "Run Cypher Query - Direct",
+    "sampleCount" : 500,
+    "errorCount" : 0,
+    "errorPct" : 0.0,
+    "meanResTime" : 58.03200000000003,
+    "medianResTime" : 33.0,
+    "minResTime" : 4.0,
+    "maxResTime" : 838.0,
+    "pct1ResTime" : 118.60000000000014,
+    "pct2ResTime" : 223.5999999999999,
+    "pct3ResTime" : 514.95,
+    "throughput" : 70.92198581560284,
+    "receivedKBytesPerSec" : 21.4630429964539,
+    "sentKBytesPerSec" : 27.419243129432626
+  },
+  "Total" : {
+    "transaction" : "Total",
+    "sampleCount" : 1000,
+    "errorCount" : 0,
+    "errorPct" : 0.0,
+    "meanResTime" : 59.26900000000008,
+    "medianResTime" : 32.0,
+    "minResTime" : 4.0,
+    "maxResTime" : 1064.0,
+    "pct1ResTime" : 115.89999999999998,
+    "pct2ResTime" : 214.6999999999996,
+    "pct3ResTime" : 543.8400000000001,
+    "throughput" : 132.45033112582783,
+    "receivedKBytesPerSec" : 40.07657284768212,
+    "sentKBytesPerSec" : 50.88369205298013
+  },
+  "Run Cypher Query - Via HAProxy" : {
+    "transaction" : "Run Cypher Query - Via HAProxy",
+    "sampleCount" : 500,
+    "errorCount" : 0,
+    "errorPct" : 0.0,
+    "meanResTime" : 60.50599999999997,
+    "medianResTime" : 31.0,
+    "minResTime" : 4.0,
+    "maxResTime" : 1064.0,
+    "pct1ResTime" : 115.80000000000007,
+    "pct2ResTime" : 198.5499999999999,
+    "pct3ResTime" : 797.3700000000015,
+    "throughput" : 66.22516556291392,
+    "receivedKBytesPerSec" : 20.034923427152318,
+    "sentKBytesPerSec" : 25.280292839403973
+  }
+}
