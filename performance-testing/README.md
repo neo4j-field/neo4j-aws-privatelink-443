@@ -1,20 +1,22 @@
-# Performance Testing — HAProxy vs Direct
+# Performance Testing: HAProxy vs Direct (Bolt)
 
 A JMeter test plan a customer can run themselves to answer one question: **how much latency does HAProxy add?**
 
-It hits Neo4j's [HTTP Query API v2](https://neo4j.com/docs/query-api/current/) (`POST /db/{database}/query/v2`) — once **via HAProxy on port 443** (the real client path in Approach 1 and Approach 3) and once **directly against Neo4j's native HTTPS port `7473`, with HAProxy bypassed** (the baseline). Same query, same client, same network — the only variable is whether HAProxy sits in the path. Whatever difference shows up in the results *is* HAProxy's cost.
+It runs real Bolt-protocol queries against Neo4j, once **via HAProxy on port 443** (the real client path in Approach 1 and Approach 3, HAProxy demuxes on the Bolt magic bytes and forwards to loopback `7687`) and once **directly against Neo4j's native Bolt port `7687`, with HAProxy bypassed** (the baseline). Same query, same client, same dataset. The variable is whether HAProxy sits in the path (and, in the cross-region profile below, whether the request stays on AWS's backbone or crosses the public internet).
 
-This works unchanged whichever config variant is deployed ([`approach-1-haproxy`](../config/approach-1-haproxy/), [`approach-3-lts-single-instance`](../config/approach-3-lts-single-instance/), or [`approach-3-lts-cluster-tls-bridging`](../config/approach-3-lts-cluster-tls-bridging/)) — all of them front the same Neo4j HTTPS port `7473` with HAProxy on `443`.
+This works unchanged whichever config variant is deployed ([`approach-1-haproxy`](../config/approach-1-haproxy/), [`approach-3-lts-single-instance`](../config/approach-3-lts-single-instance/), or [`approach-3-lts-cluster-tls-bridging`](../config/approach-3-lts-cluster-tls-bridging/)), all of them front the same Neo4j Bolt port `7687` with HAProxy on `443`.
 
-> **Approach 2 (NES, no HAProxy) is out of scope here.** NES is Bolt-only with no HTTP surface, so it isn't reachable with JMeter's HTTP sampler — a fair comparison against NES needs a Bolt driver script (see [`examples/`](../examples/)), not an HTTP tool.
+> **JMeter has no native Bolt sampler.** There's no HTTP request/response to drive, just a TLS handshake, a 4-byte Bolt handshake, then PackStream-encoded messages. Each sample here is a **JSR223 (Groovy) Sampler backed by the official `neo4j-java-driver`**, so the numbers reflect what a real Bolt client experiences, not a hand-rolled reimplementation of the wire protocol. See [The test plan](#the-test-plan) below.
 
-> **Bolt also works on 443 in Approaches 1 and 3 — this test doesn't cover that path.** HAProxy demuxes by peeking the first few bytes after TLS termination: Bolt's magic handshake (`60 60 B0 17`) routes to the Bolt backend, anything else routes to HTTPS — so a `bolt+s://` or `neo4j+s://` driver connecting on port 443 from the Central VPC works transparently, same port, same HAProxy. JMeter's HTTP sampler can't drive that path (no HTTP request is involved); it's already validated in [`examples/neo4j_privatelink_demo.py`](../examples/neo4j_privatelink_demo.py). If you want a load comparison for Bolt specifically, that needs a driver-based load generator (e.g. a small Python/Java script spinning up N sessions), not JMeter — ask if that's wanted and it can be added alongside this.
+> **Looking for the HTTP Query API v2 variant instead?** An earlier version of this test compared Neo4j's HTTP Query API v2 on port `7473` (direct) vs `443` (via HAProxy), isolating HAProxy's own cost with client and server on the same box. That test plan, its setup script, and its validated `c5.4xlarge` results are still here: [`jmeter/HAProxy-vs-Direct-Neo4j.jmx`](jmeter/HAProxy-vs-Direct-Neo4j.jmx), [`results/2026-07-14-validated-run.md`](results/2026-07-14-validated-run.md). Useful if you want an HTTP-level number, or want to isolate HAProxy's cost alone rather than the full cross-region comparison this doc now covers.
+
+> **Approach 2 (NES, no HAProxy) is out of scope here.** A fair comparison against NES needs its own driver-based script (see [`examples/`](../examples/)), since NES sits outside the HAProxy/PrivateLink path this test plan exercises.
 
 ---
 
 ## Test topology
 
-The two paths, one per row — same client, same query, same network; the only difference is whether HAProxy is in the request path:
+The two paths, one per row, same client, same query, same dataset. The difference is whether HAProxy is in the request path, and which network the request travels:
 
 ```mermaid
 flowchart TB
@@ -23,16 +25,16 @@ flowchart TB
         subgraph PathA_Loc["Provider VPC — us-east-1 (same VPC as Neo4j)"]
             C1["JMeter test client<br/>private IP"]
         end
-        C1 -->|"HTTPS :7473<br/>Query API v2"| N1[("Neo4j")]
+        C1 -->|"Bolt :7687"| N1[("Neo4j")]
     end
 
     subgraph PathB["Path B — Via HAProxy (real client path)"]
         direction LR
-        subgraph PathB_Loc["Consumer VPC — ca-central-1 (customer's location)"]
+        subgraph PathB_Loc["Central VPC — ca-central-1 (customer's location)"]
             C2["JMeter test client"]
         end
-        C2 -->|"AWS PrivateLink + NLB<br/>HTTPS :443"| H["HAProxy<br/>TLS terminate + re-encrypt<br/>(magic-byte demux)"]
-        H -->|"HTTPS :7473<br/>Query API v2<br/>(loopback)"| N2[("Neo4j")]
+        C2 -->|"AWS PrivateLink + NLB<br/>Bolt :443"| H["HAProxy<br/>TLS terminate + re-encrypt<br/>(magic-byte demux)"]
+        H -->|"Bolt :7687<br/>(loopback)"| N2[("Neo4j")]
     end
 
     PathA ~~~ PathB
@@ -44,9 +46,9 @@ flowchart TB
     style C2 fill:#12263A,stroke:#4C8BF5,color:#fff
 ```
 
-**Path A** measures Neo4j's raw response time with nothing in front of it, tested from inside the Provider VPC (the only place port `7473` is reachable). **Path B** is the customer's actual path — a client in the Consumer VPC, over AWS PrivateLink, hitting HAProxy on `443`; HAProxy terminates TLS and re-encrypts to Neo4j on loopback (see [`config/approach-3-lts-cluster-tls-bridging/README.md`](../config/approach-3-lts-cluster-tls-bridging/README.md) for how the TLS-bridging + magic-byte demux works). **B minus A is HAProxy's cost** — that's the whole test.
+**Path A** measures Neo4j's raw response time with nothing in front of it, tested from inside the Provider VPC (the only place port `7687` is reachable this way without opening it publicly). **Path B** is the customer's actual path, a client in the Central VPC, over AWS PrivateLink, hitting HAProxy on `443`. HAProxy terminates TLS and re-encrypts to Neo4j on loopback (see [`config/approach-3-lts-cluster-tls-bridging/README.md`](../config/approach-3-lts-cluster-tls-bridging/README.md) for how the TLS-bridging + magic-byte demux works). **B minus A is HAProxy's cost plus whatever the network path itself adds**, see the note below.
 
-**A note on isolating variables:** running Path B from the Consumer VPC (as diagrammed) measures the *customer's real end-to-end experience*, but it bundles PrivateLink/cross-VPC network cost in with HAProxy's cost. To isolate HAProxy alone, run *both* paths from inside the Provider VPC (private IP for both) — that's what the [validated example run](#validated-example-run) below does. Run both versions if you want to report each number separately: "HAProxy's own overhead" vs. "the full path a customer actually experiences."
+**A note on isolating variables:** running Path A from the Central VPC too (over the public internet, direct to the node's public IP on `7687`) instead of from inside the Provider VPC measures the real end-to-end tradeoff a customer faces (expose Bolt directly to the internet vs. go through PrivateLink + HAProxy), but it bundles PrivateLink/cross-region network cost in with HAProxy's cost. [`results/2026-07-15-bolt-validated-run.md`](results/2026-07-15-bolt-validated-run.md) is that cross-region version. To isolate HAProxy alone, run *both* paths from inside the Provider VPC (private IP for both), as diagrammed above. Run both profiles if you want to report each number separately: "HAProxy's own overhead" vs. "the full path a customer actually experiences."
 
 ---
 
@@ -58,117 +60,118 @@ The test defaults to a real indexed point lookup against a small synthetic datas
 cypher-shell -a bolt+ssc://<host>:7687 -u neo4j -p '<password>' -f seed-data.cypher
 ```
 
-This creates 10,000 `:PerfTestPerson` nodes (unique-constrained on `id`, grouped into 20 synthetic cities with a `FOLLOWS` ring per city) — see [`seed-data.cypher`](seed-data.cypher). The default query is:
+This creates 10,000 `:PerfTestPerson` nodes (unique-constrained on `id`, grouped into 20 synthetic cities with a `FOLLOWS` ring per city), see [`seed-data.cypher`](seed-data.cypher). The default query is:
 
 ```cypher
 MATCH (p:PerfTestPerson {id: $id}) RETURN p.id AS id, p.name AS name, p.email AS email, p.city AS city
 ```
 
-with `id` randomized per request (1–10000, via JMeter's `__Random` function) so load spreads across the dataset instead of hammering one page-cached node. Two heavier alternatives (a non-indexed filtered scan, and a 1-hop relationship traversal) are in [`queries.md`](queries.md) if you want the comparison under more realistic query cost.
+with `id` randomized per request (1 to 10000, via a random integer per sample) so load spreads across the dataset instead of hammering one page-cached node. Two heavier alternatives (a non-indexed filtered scan, and a 1-hop relationship traversal) are in [`queries.md`](queries.md) if you want the comparison under more realistic query cost.
+
+Neo4j's Bolt listener here requires TLS (`server.bolt.tls_level=REQUIRED`), so both paths use `bolt+ssc://` (encrypted, skipping cert/hostname verification, since the wildcard cert covers `*.neo4jfield.org` rather than a raw IP), not `bolt+s://`. Both use single-target `bolt://`-style addressing, not `neo4j://` routing, since this measures one node's request latency, not cluster-wide load balancing.
 
 ---
 
 ## Why JMeter
 
-Purpose-built for exactly this: N concurrent virtual users, statistically meaningful latency distribution under load, an Aggregate Report / HTML Dashboard with full percentile breakdown (p90/p95/p99) and throughput — the numbers that actually matter when telling a customer whether HAProxy's overhead is acceptable. A single Postman/curl request can't produce a percentile distribution under concurrency; JMeter can, out of the box.
+Purpose-built for exactly this: N concurrent virtual users, statistically meaningful latency distribution under load, an Aggregate Report / HTML Dashboard with full percentile breakdown (p90/p95/p99) and throughput, the numbers that actually matter when telling a customer whether HAProxy's overhead is acceptable. A single script issuing one request at a time can't produce a percentile distribution under concurrency; JMeter can, out of the box, once it's driving the real protocol via the driver (see above).
 
 ---
 
 ## Prerequisites
 
-1. **A test-runner host with JMeter installed.** [`setup-test-runner.sh`](setup-test-runner.sh) installs Java and JMeter 5.6.3 on a fresh RHEL/Amazon Linux host — run it on whatever machine will actually issue the requests (a bastion in the same VPC as Neo4j, or Neo4j's own host for a same-box validation run).
+1. **A test-runner host with JMeter and the Neo4j driver installed.** [`setup-test-runner.sh`](setup-test-runner.sh) installs Java, JMeter 5.6.3, and drops `neo4j-java-driver` (a single shaded jar) into JMeter's `lib/` on a fresh RHEL/Amazon Linux host. Run it on whatever machine will actually issue the requests, a bastion in the same VPC as Neo4j for the isolated-HAProxy-cost profile, or the Central VPC client (e.g. `neo4j-nes-server-1`) for the cross-region profile.
 
 2. **Neo4j reachable on two paths from that test-runner host:**
-   - Via HAProxy: `https://<host>:443` (the normal client path)
-   - Direct: `https://<host>:7473` — Neo4j's native HTTPS port, bypassing HAProxy entirely
+   - Via HAProxy: `bolt+ssc://<host>:443` (the normal client path, works from the Central VPC over the existing PrivateLink connection)
+   - Direct: `bolt+ssc://<host>:7687`, Neo4j's native Bolt port, bypassing HAProxy entirely
 
-   **If the test runner is inside the same VPC as Neo4j** (e.g. another EC2 instance, or JMeter running on the Neo4j box itself), the private IP works for both paths with no security group changes at all — that's the default in the test plan here (`10.0.153.25`, this deployment's current private IP; update to whatever yours is). This is the recommended setup: it's a real path through the NIC (not a `localhost`-only loopback shortcut) without touching a security group.
+   **If the test runner is inside the same VPC as Neo4j**, the private IP works for both paths with no security group changes. This isolates HAProxy's own cost (see [Test topology](#test-topology) above).
 
-   **If the test runner is outside the VPC** (customer's laptop, a box in a different VPC without a private route), `7473` isn't reachable by design — only `443` is meant to be exposed. To still get a fair "HAProxy bypassed" baseline, pick one:
-   - **SSH tunnel** — `ssh -i <key>.pem -L 7473:localhost:7473 ec2-user@<node-public-ip>`, then point the "direct" target at `localhost:7473`. No security group changes, but the tunnel itself adds a small amount of overhead under heavy concurrency.
-   - **Temporary security group rule** — inbound `tcp/7473` scoped to the test runner's specific IP only (never `0.0.0.0/0`), removed after the test. More accurate at real concurrency since there's no tunnel hop.
+   **If the test runner is the Central VPC client**, the via-HAProxy path already works unchanged over PrivateLink. For the direct path, `7687` needs to be reachable from that client, either a temporary security group rule scoped to the client's IP (not `0.0.0.0/0` for anything beyond a short test window), or a broader rule if you're deliberately measuring the "exposed directly to the internet" scenario, in which case that exposure is the thing being measured, not a side effect to avoid.
 
 3. **Test data seeded** (see [Test data](#test-data) above) and **Neo4j credentials** with read access to it.
-4. The current IP/hostname of the target node — public IPs on these EC2 instances **change on restart**, confirm before each run.
+4. The current IP/hostname of the target node, public IPs on these EC2 instances **change on restart**, confirm before each run.
 
 ---
 
 ## The test plan
 
-**File:** [`jmeter/HAProxy-vs-Direct-Neo4j.jmx`](jmeter/HAProxy-vs-Direct-Neo4j.jmx)
+**File:** [`jmeter/Bolt-HAProxy-vs-Direct.jmx`](jmeter/Bolt-HAProxy-vs-Direct.jmx)
 
-Three Thread Groups, run in this order:
+Four Thread Groups, run in this order:
 
 | Thread Group | Target | Counted in results? | Output |
 |---|---|---|---|
-| `00 - Warm-up (untracked)` | Both paths, `${WARMUP_THREADS}` threads × `${WARMUP_LOOPS}` loops (default 5×20 = 100 requests/path) | **No** — a Setup Thread Group with no listener attached, runs first and always, purely to get past JIT/connection/page-cache cold start before anything is measured | *(none)* |
-| `01 - Baseline (Direct to Neo4j, HAProxy bypassed)` | `${DIRECT_HOST}:${DIRECT_PORT}` (default `10.0.153.25:7473` — this deployment's private IP; substitute yours, or `localhost` if tunneling from outside the VPC) | Yes | `results-direct.jtl` |
-| `02 - Via HAProxy (port 443)` | `${VIA_HAPROXY_HOST}:${VIA_HAPROXY_PORT}` (default `10.0.153.25:443` — substitute the current private IP, public IP, or PrivateLink hostname depending on where the test runner sits) | Yes | `results-haproxy.jtl` |
+| `00 - Warm-up (untracked)` | Both paths, `${WARMUP_THREADS}` threads x `${WARMUP_LOOPS}` loops (default 5x20 = 100 requests/path) | **No**, a Setup Thread Group with no listener attached, runs first and always, purely to get past JIT/connection-pool/page-cache cold start before anything is measured | *(none)* |
+| `01 - Baseline (Direct Bolt 7687, HAProxy bypassed)` | `${DIRECT_HOST}:${DIRECT_PORT}` (default a current East node public IP : `7687`) | Yes | `results-direct.jtl` |
+| `02 - Via HAProxy (Bolt over 443)` | `${VIA_HAPROXY_HOST}:${VIA_HAPROXY_PORT}` (default `privatelink.neo4jfield.org:443`) | Yes | `results-haproxy.jtl` |
+| `99 - Teardown (close drivers)` | Closes both cached driver instances cleanly | No | *(none)* |
 
-Skipping the warm-up matters: an early run without it showed p99s 2-5x higher than the warmed-up numbers below, purely from cold-start effects — not HAProxy, not Neo4j. `WARMUP_LOOPS=0` disables it if you deliberately want cold-start behavior included.
+Each Thread Group creates **one shared `Driver` instance per target** (cached in JMeter's `props`, keyed by URI) the first time it's needed, and every sample opens a pooled `Session` off that driver, mirroring how a real application uses the driver (one long-lived `Driver`, many short `Session`s) rather than paying connection setup cost on every request.
 
-Auth is handled by a native JMeter **HTTP Authorization Manager** (not a hand-built header), so it works out of the box with any JMeter 5.x — no special function support required.
+Skipping the warm-up matters: cold-start effects (JIT, connection pool, page cache) show up as inflated early-sample latency that has nothing to do with HAProxy or Neo4j. `WARMUP_LOOPS=0` disables it if you deliberately want cold-start behavior included.
 
 ### Setup
 
-1. Run [`setup-test-runner.sh`](setup-test-runner.sh), or install JMeter yourself: https://jmeter.apache.org/download_jmeter.cgi (`brew install jmeter` on macOS).
+1. Run [`setup-test-runner.sh`](setup-test-runner.sh), or install JMeter yourself and drop `neo4j-java-driver-5.26.0.jar` (or newer 5.x) into its `lib/` folder: https://jmeter.apache.org/download_jmeter.cgi, https://repo1.maven.org/maven2/org/neo4j/driver/neo4j-java-driver/
 2. Seed the test data (see [Test data](#test-data)).
-3. Open `HAProxy-vs-Direct-Neo4j.jmx` in the JMeter GUI, or edit variables directly in the XML's "User Defined Variables" — either way, set:
-   - `VIA_HAPROXY_HOST` / `VIA_HAPROXY_PORT` — the HAProxy path
-   - `DIRECT_HOST` / `DIRECT_PORT` — the baseline path
-   - `NEO4J_USER` / `NEO4J_PASSWORD`
-   - `SEED_MAX_ID` — must match however many `:PerfTestPerson` rows `seed-data.cypher` created (default 10000)
-   - `THREADS` / `RAMPUP` / `LOOPS` — concurrency profile (defaults: 10 threads, 5s ramp-up, 50 loops each = 500 requests per path)
-   - `WARMUP_THREADS` / `WARMUP_LOOPS` — warm-up profile (default 5 threads × 20 loops = 100 untracked requests per path)
+3. Open `Bolt-HAProxy-vs-Direct.jmx` in the JMeter GUI, or edit variables directly in the XML's "User Defined Variables", either way, set:
+   - `DIRECT_HOST` / `DIRECT_PORT`, the direct Bolt path (default `7687`)
+   - `VIA_HAPROXY_HOST` / `VIA_HAPROXY_PORT`, the HAProxy path (default `privatelink.neo4jfield.org` / `443`)
+   - `NEO4J_DATABASE` / `NEO4J_USER` / `NEO4J_PASSWORD`
+   - `SEED_MAX_ID`, must match however many `:PerfTestPerson` rows `seed-data.cypher` created (default 10000)
+   - `CONNECT_TIMEOUT_SEC`, driver connection timeout (default 5)
+   - `THREADS` / `RAMPUP` / `LOOPS`, concurrency profile (defaults: 10 threads, 5s ramp-up, 50 loops each = 500 requests per path)
+   - `WARMUP_THREADS` / `WARMUP_LOOPS`, warm-up profile (default 5 threads x 20 loops = 100 untracked requests per path)
 
 ### Run
-
-GUI (for a first look / debugging):
-```bash
-jmeter -t jmeter/HAProxy-vs-Direct-Neo4j.jmx
-```
 
 Non-GUI with an HTML dashboard report (what to actually hand a customer):
 ```bash
 cd performance-testing/jmeter
-jmeter -n -t HAProxy-vs-Direct-Neo4j.jmx -l results.jtl -e -o report/
+jmeter -n -t Bolt-HAProxy-vs-Direct.jmx \
+  -JDIRECT_HOST=<east-node-public-ip> -JDIRECT_PORT=7687 \
+  -JVIA_HAPROXY_HOST=privatelink.neo4jfield.org -JVIA_HAPROXY_PORT=443 \
+  -JNEO4J_PASSWORD='<password>' \
+  -l results.jtl -e -o report/
 open report/index.html   # macOS; xdg-open on Linux
 ```
 
-The dashboard's **Statistics** table gives min/max/average/p90/p95/p99 and throughput per Thread Group — read the `01 - Baseline` row against the `02 - Via HAProxy` row directly.
+The dashboard's **Statistics** table gives min/max/average/p90/p95/p99 and throughput per Thread Group, read the `01 - Baseline` row against the `02 - Via HAProxy` row directly.
 
 ### Override variables from the command line (no GUI editing needed)
 
 ```bash
-jmeter -n -t HAProxy-vs-Direct-Neo4j.jmx \
-  -JVIA_HAPROXY_HOST=10.0.153.25 -JVIA_HAPROXY_PORT=443 \
-  -JDIRECT_HOST=10.0.153.25 -JDIRECT_PORT=7473 \
+jmeter -n -t Bolt-HAProxy-vs-Direct.jmx \
+  -JDIRECT_HOST=<east-node-public-ip> -JDIRECT_PORT=7687 \
+  -JVIA_HAPROXY_HOST=privatelink.neo4jfield.org -JVIA_HAPROXY_PORT=443 \
   -JNEO4J_PASSWORD='<password>' \
   -JTHREADS=25 -JRAMPUP=10 -JLOOPS=100 \
   -l results.jtl -e -o report/
 ```
 
-All variables (including `CYPHER_STATEMENT` and `SEED_MAX_ID`) are wired through `${__P(name,default)}`, so every `-JNAME=value` above genuinely overrides the default — confirmed by running with `-JTHREADS=3 -JLOOPS=5` and checking the actual request count matched (30, not the default 1000).
+All variables are wired through `${__P(name,default)}`, so every `-JNAME=value` above genuinely overrides the default.
 
 ---
 
 ## Recording and presenting results
 
-Use [`results/results-template.md`](results/results-template.md) to record a run's direct-vs-via-HAProxy numbers and fill in the delta. It includes a short guide on what the numbers actually mean — worth reading before sending anything to a customer, since the headline number they'll ask about is p99, not the average.
+Use [`results/results-template.md`](results/results-template.md) to record a run's direct-vs-via-HAProxy numbers and fill in the delta. It includes a short guide on what the numbers actually mean, worth reading before sending anything to a customer, since the headline number they'll ask about is p99, not the average.
 
 ### Validated example run
 
-The test plan was run end-to-end (warm-up included) against a live single-instance deployment on **`c5.4xlarge`** (16 vCPU) with the real dataset seeded — 25 threads, 2,500 measured requests per path (5,000 total), both paths hitting the instance's private IP — actual indexed point lookups against `:PerfTestPerson`, not `RETURN 1`. On adequately-sized hardware, **HAProxy's overhead is statistically indistinguishable from the direct baseline**: p50 through p99 are identical (2/4/5/10ms either way), with only a +0.13ms mean difference. Earlier runs on undersized `t2.medium` instances showed a real, measurable tail-latency cost (+30 to +124ms at p99) — that cost disappeared entirely once the instances were resized, consistent with it being CPU contention on burstable hardware rather than an architectural cost of HAProxy itself. Full breakdown, charts, response-time distribution, and both prior (superseded) runs for comparison are in **[`results/2026-07-14-validated-run.md`](results/2026-07-14-validated-run.md)** (renders directly on GitHub, charts included). The interactive HTML dashboard is at [`results/sample-report/index.html`](results/sample-report/index.html) (download/clone to view — GitHub doesn't render standalone HTML inline).
+The test plan was run end-to-end (warm-up included) from the Central VPC client (`neo4j-nes-server-1`, ca-central-1, `c5.4xlarge`) against the live 3-node cluster in us-east-1, 10 threads, 500 measured requests per path (1,000 total), the direct path over the public internet to a node's public IP, the via-HAProxy path over the existing PrivateLink connection. Direct averaged 30.6ms versus 35.6ms via HAProxy, a consistent 3 to 6ms delta across every percentile from minimum through p99, with 0 errors on both paths. Full breakdown and interpretation in **[`results/2026-07-15-bolt-validated-run.md`](results/2026-07-15-bolt-validated-run.md)**.
 
-Treat this as a strong data point for right-sized hardware, not a universal verdict — instance sizing clearly matters here. Re-run against the customer's actual instance type before presenting a number for their specific deployment.
+Treat this as a first data point, not a universal verdict, it's a single run at modest concurrency (10 threads). Re-run at higher concurrency (25+ threads) before presenting a number as stable, and re-run against the customer's actual instance type and region pairing before quoting it for their specific deployment.
 
 ## Related
 
-- [`seed-data.cypher`](seed-data.cypher) — creates the `:PerfTestPerson` test dataset the plan queries against
-- [`queries.md`](queries.md) — the default point-lookup query plus two heavier alternatives (filtered scan, 1-hop traversal)
-- [`setup-test-runner.sh`](setup-test-runner.sh) — installs Java/JMeter on a fresh test-runner host
-- [`results/2026-07-14-validated-run.md`](results/2026-07-14-validated-run.md) — full write-up of the validated run above, readable directly on GitHub
-- [`results/sample-report/index.html`](results/sample-report/index.html) — the same run's interactive HTML dashboard (download to view)
-- [`docs/01-architecture.md`](../docs/01-architecture.md) — overall PrivateLink/HAProxy architecture
-- [`docs/04-comparison.md`](../docs/04-comparison.md) — Approach 1 vs Approach 2 trade-offs
-- [`examples/`](../examples/) — Python Bolt-driver demos (useful if a Bolt-level, not HTTP-level, comparison is ever needed)
+- [`seed-data.cypher`](seed-data.cypher): creates the `:PerfTestPerson` test dataset the plan queries against
+- [`queries.md`](queries.md): the default point-lookup query plus two heavier alternatives (filtered scan, 1-hop traversal)
+- [`setup-test-runner.sh`](setup-test-runner.sh): installs Java/JMeter/the Neo4j driver on a fresh test-runner host
+- [`results/2026-07-15-bolt-validated-run.md`](results/2026-07-15-bolt-validated-run.md): full write-up of the cross-region validated run above
+- [`jmeter/HAProxy-vs-Direct-Neo4j.jmx`](jmeter/HAProxy-vs-Direct-Neo4j.jmx) + [`results/2026-07-14-validated-run.md`](results/2026-07-14-validated-run.md): the earlier HTTP Query API v2 variant, same-box, isolates HAProxy's own cost
+- [`docs/01-architecture.md`](../docs/01-architecture.md): overall PrivateLink/HAProxy architecture
+- [`docs/04-comparison.md`](../docs/04-comparison.md): Approach 1 vs Approach 2 trade-offs
+- [`examples/`](../examples/): Python Bolt-driver demos
