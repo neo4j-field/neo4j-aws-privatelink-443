@@ -22,10 +22,10 @@ The two paths, one per row, same client, same query, same dataset. The differenc
 flowchart TB
     subgraph PathA["Path A — Direct baseline (HAProxy bypassed)"]
         direction LR
-        subgraph PathA_Loc["Provider VPC — us-east-1 (same VPC as Neo4j)"]
-            C1["JMeter test client<br/>private IP"]
+        subgraph PathA_Loc["Central VPC — ca-central-1 (customer's location)"]
+            C1["JMeter test client"]
         end
-        C1 -->|"Bolt :7687"| N1[("Neo4j")]
+        C1 -->|"Public internet<br/>Bolt :7687 (node public IP)"| N1[("Neo4j<br/>us-east-1")]
     end
 
     subgraph PathB["Path B — Via HAProxy (real client path)"]
@@ -34,7 +34,7 @@ flowchart TB
             C2["JMeter test client"]
         end
         C2 -->|"AWS PrivateLink + NLB<br/>Bolt :443"| H["HAProxy<br/>TLS terminate + re-encrypt<br/>(magic-byte demux)"]
-        H -->|"Bolt :7687<br/>(loopback)"| N2[("Neo4j")]
+        H -->|"Bolt :7687<br/>(loopback)"| N2[("Neo4j<br/>us-east-1")]
     end
 
     PathA ~~~ PathB
@@ -46,9 +46,9 @@ flowchart TB
     style C2 fill:#12263A,stroke:#4C8BF5,color:#fff
 ```
 
-**Path A** measures Neo4j's raw response time with nothing in front of it, tested from inside the Provider VPC (the only place port `7687` is reachable this way without opening it publicly). **Path B** is the customer's actual path, a client in the Central VPC, over AWS PrivateLink, hitting HAProxy on `443`. HAProxy terminates TLS and re-encrypts to Neo4j on loopback (see [`config/approach-3-lts-cluster-tls-bridging/README.md`](../config/approach-3-lts-cluster-tls-bridging/README.md) for how the TLS-bridging + magic-byte demux works). **B minus A is HAProxy's cost plus whatever the network path itself adds**, see the note below.
+**Path A** measures Neo4j's raw response time with HAProxy bypassed, tested here from the Central VPC client over the public internet, direct to the node's public IP on `7687` (the topology of the [validated run below](#validated-example-run)). **Path B** is the customer's actual path, the same client in the Central VPC, over AWS PrivateLink, hitting HAProxy on `443`. HAProxy terminates TLS and re-encrypts to Neo4j on loopback (see [`config/approach-3-lts-cluster-tls-bridging/README.md`](../config/approach-3-lts-cluster-tls-bridging/README.md) for how the TLS-bridging + magic-byte demux works). **B minus A is HAProxy's cost plus whatever the network path itself adds**, see the note below.
 
-**A note on isolating variables:** running Path A from the Central VPC too (over the public internet, direct to the node's public IP on `7687`) instead of from inside the Provider VPC measures the real end-to-end tradeoff a customer faces (expose Bolt directly to the internet vs. go through PrivateLink + HAProxy), but it bundles PrivateLink/cross-region network cost in with HAProxy's cost. [`results/2026-07-15-bolt-validated-run.md`](results/2026-07-15-bolt-validated-run.md) is that cross-region version. To isolate HAProxy alone, run *both* paths from inside the Provider VPC (private IP for both), as diagrammed above. Run both profiles if you want to report each number separately: "HAProxy's own overhead" vs. "the full path a customer actually experiences."
+**A note on isolating variables:** the diagram above (and the [validated run below](#validated-example-run), [`results/2026-07-15-bolt-validated-run.md`](results/2026-07-15-bolt-validated-run.md)) puts the Path A client in the Central VPC, reaching the node's public IP over the public internet. That measures the real end-to-end tradeoff a customer faces (expose Bolt directly to the internet vs. go through PrivateLink + HAProxy), but it bundles PrivateLink/cross-region network cost in with HAProxy's cost. To isolate HAProxy alone, run *both* paths from inside the Provider VPC instead (private IP for both, `7687` reachable that way without opening it publicly). Run both profiles if you want to report each number separately: "HAProxy's own overhead" vs. "the full path a customer actually experiences."
 
 ---
 
